@@ -2916,7 +2916,7 @@ void
 CQGate::
 placePortOnSide(CQPort *port, const CQPort::Side &side) const
 {
-  CQPort::Side side1;
+  CQPort::Side side1 = CQPort::Side::NONE;
 
   if      (orientation() == Orientation::R0)
     side1 = side;
@@ -2943,7 +2943,7 @@ void
 CQGate::
 placePortsOnSide(CQPort **ports, int n, const CQPort::Side &side) const
 {
-  CQPort::Side side1;
+  CQPort::Side side1 = CQPort::Side::NONE;
 
   if      (orientation() == Orientation::R0)
     side1 = side;

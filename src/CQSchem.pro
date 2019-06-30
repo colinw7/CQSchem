@@ -26,6 +26,12 @@ OBJECTS_DIR = ../obj
 INCLUDEPATH += \
 . \
 ../include \
+../../CQUtil/include \
 ../../CUtil/include \
 ../../CMath/include \
 ../../COS/include \
+
+unix:LIBS += \
+-L../lib \
+-L../../CQUtil/lib \
+-lCQUtil \
