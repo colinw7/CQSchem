@@ -21,8 +21,15 @@ struct CQSchemRenderer {
   QPainter*           painter { nullptr };
   QRect               prect;
   QRectF              rect;
+  QRectF              placementRect;
   CDisplayRange2D     displayRange;
   CDisplayTransform2D displayTransform;
+  QColor              connectionColor { 255, 255, 255, 128 };
+  QColor              gateStrokeColor { 200, 200, 200, 128 };
+  QColor              gateFillColor   { 80, 80, 100 };
+  QColor              textColor       { 200, 200, 200 };
+  QColor              selectColor     { Qt::yellow };
+  QColor              insideColor     { Qt::cyan };
 
   CQSchemRenderer() :
    displayTransform(&displayRange) {
@@ -147,10 +154,14 @@ class CQPlacementGroup {
   };
 
   using Gates           = std::vector<GateData>;
+  using Connections     = std::vector<CQConnection *>;
   using PlacementGroups = std::vector<PlacementGroupData>;
+  using Buses           = std::vector<CQBus *>;
 
  public:
   CQPlacementGroup(const Placement &placement=Placement::HORIZONTAL, int nr=-1, int nc=-1);
+
+ ~CQPlacementGroup();
 
   const Placement &placement() const { return placement_; }
   void setPlacement(const Placement &v) { placement_ = v; }
@@ -166,15 +177,29 @@ class CQPlacementGroup {
 
   const Gates &gates() const { return gates_; }
 
+  CQPlacementGroup *parent() const { return parentPlacementGroup_; }
+
   const PlacementGroups &placementGroups() const { return placementGroups_; }
 
   const QRectF &rect() const { updateRect(); return rect_; }
   void setRect(const QRectF &r);
 
+  const QString &expandName() const { return expandName_; }
+  void setExpandName(const QString &v) { expandName_ = v; }
+
+  const QString &collapseName() const { return collapseName_; }
+  void setCollapseName(const QString &v) { collapseName_ = v; }
+
   void addGate(CQGate *gate, int r=-1, int c=-1, int nr=1, int nc=1,
                Alignment alignment=Alignment::CENTER);
 
   void removeGate(CQGate *gate);
+
+  void addConnection(CQConnection *connection);
+  void removeConnection(CQConnection *connection);
+
+  void addBus(CQBus *bus);
+  void removeBus(CQBus *bus);
 
   CQPlacementGroup *addPlacementGroup(const Placement &placement, int nr, int nc,
                                       int r1=-1, int c1=-1, int nr1=1, int nc1=1,
@@ -182,6 +207,8 @@ class CQPlacementGroup {
 
   void addPlacementGroup(CQPlacementGroup *placementGroup, int r=-1, int c=-1,
                          int nr=1, int nc=1, Alignment alignment=Alignment::CENTER);
+
+  void replacePlacementGroup(CQSchem *schem, CQPlacementGroup *placementGroup);
 
   bool inside(const QPointF &p) const { return prect_.contains(p); }
 
@@ -197,18 +224,22 @@ class CQPlacementGroup {
   QColor penColor(CQSchemRenderer *renderer) const;
 
  private:
-  Placement         placement_           { Placement::HORIZONTAL };
-  int               nr_                  { -1 };
-  int               nc_                  { -1 };
+  Placement         placement_            { Placement::HORIZONTAL };
+  int               nr_                   { -1 };
+  int               nc_                   { -1 };
   Gates             gates_;
-  CQPlacementGroup* parentPlacementGroup { nullptr };
+  Connections       connections_;
+  Buses             buses_;
+  CQPlacementGroup* parentPlacementGroup_ { nullptr };
   PlacementGroups   placementGroups_;
+  QString           expandName_;
+  QString           collapseName_;
   QRectF            rect_;
-  bool              rectValid_           { false };
+  bool              rectValid_            { false };
   mutable QRectF    prect_;
-  double            w_                   { 1.0 };
-  double            h_                   { 1.0 };
-  bool              selected_            { false };
+  double            w_                    { 1.0 };
+  double            h_                    { 1.0 };
+  bool              selected_             { false };
 };
 
 //---
@@ -238,6 +269,8 @@ class CQSchemWindow : public QFrame {
   void gateVisibleSlot          (bool b);
   void placementGroupVisibleSlot(bool b);
 
+  void collapseBusSlot(bool b);
+
  private:
   CQSchem* schem_    { nullptr };
   QLabel*  posLabel_ { nullptr };
@@ -249,11 +282,25 @@ class CQSchem : public QFrame {
   Q_OBJECT
 
  public:
+  enum class TextLinePos {
+    START,
+    END,
+    MIDDLE
+  };
+
+  enum class TextAlign {
+    LEFT,
+    RIGHT,
+    CENTER
+  };
+
   using Gates = std::vector<CQGate *>;
 
  public:
   CQSchem(CQSchemWindow *window);
  ~CQSchem();
+
+  //---
 
   bool isShowConnectionText() const { return showConnectionText_; }
   void setShowConnectionText(bool b) { showConnectionText_ = b; update(); }
@@ -282,25 +329,47 @@ class CQSchem : public QFrame {
   bool isPlacementGroupVisible() const { return placementGroupVisible_; }
   void setPlacementGroupVisible(bool b) { placementGroupVisible_ = b; }
 
-  void addNandGate      ();
-  void addNotGate       ();
-  void addAndGate       ();
-  void addAnd3Gate      ();
-  void addAnd4Gate      ();
-  void addAnd8Gate      ();
-  void addOrGate        ();
-  void addXorGate       ();
-  void addMemoryGate    ();
-  void addMemory8Gate   ();
-  void addEnablerGate   ();
-  void addRegisterGate  ();
-  void addDecoder4Gate  ();
-  void addDecoder8Gate  ();
-  void addDecoder16Gate ();
-  void addDecoder256Gate();
-  void addLShiftGate    ();
-  void addRShiftGate    ();
-  void addAdderGate     ();
+  bool isCollapseBus() const { return collapseBus_; }
+  void setCollapseBus(bool b) { collapseBus_ = b; }
+
+  //---
+
+  void clear();
+
+  //---
+
+  bool execGate(const QString &name);
+
+  void addNandGate       ();
+  void addNotGate        ();
+  void addAndGate        ();
+  void addAnd3Gate       ();
+  void addAnd4Gate       ();
+  void addAnd8Gate       ();
+  void addOrGate         ();
+  void addOr8Gate        ();
+  void addXorGate        ();
+  void addMemoryGate     ();
+  void addMemory8Gate    ();
+  void addEnablerGate    ();
+  void addRegisterGate   ();
+  void addDecoder4Gate   ();
+  void addDecoder8Gate   ();
+  void addDecoder16Gate  ();
+  void addDecoder256Gate ();
+  void addLShiftGate     ();
+  void addRShiftGate     ();
+  void addInverterGate   ();
+  void addAnderGate      ();
+  void addOrerGate       ();
+  void addXorerGate      ();
+  void addAdderGate      ();
+  void addAdder8Gate     ();
+  void addComparatorGate ();
+  void addComparator8Gate();
+  void addBus0Gate       ();
+  void addBus1Gate       ();
+  void addAluGate        ();
 
   void buildNotGate       ();
   void buildAndGate       ();
@@ -308,6 +377,7 @@ class CQSchem : public QFrame {
   void buildAnd4Gate      ();
   void buildAnd8Gate      ();
   void buildOrGate        ();
+  void buildOr8Gate       ();
   void buildXorGate       ();
   void buildMemoryGate    ();
   void buildMemory8Gate   ();
@@ -327,12 +397,14 @@ class CQSchem : public QFrame {
   void buildAdder8        ();
   void buildComparator    ();
   void buildComparator8   ();
+  void buildBus0          ();
+  void buildBus1          ();
   void buildRam256        ();
   void buildRam65536      ();
+  void buildAlu           ();
 
   CQConnection *addConnection(const QString &name);
-
-  void addGate(CQGate *gate);
+  void removeConnection(CQConnection *connection);
 
   template<typename T>
   T *addGateT(const QString &name="") {
@@ -343,7 +415,11 @@ class CQSchem : public QFrame {
     return gate;
   }
 
+  void addGate(CQGate *gate);
+  void removeGate(CQGate *gate);
+
   CQBus *addBus(const QString &name, int n);
+  void removeBus(CQBus *bus);
 
   CQPlacementGroup *addPlacementGroup(CQPlacementGroup::Placement placement=
                                        CQPlacementGroup::Placement::HORIZONTAL,
@@ -356,6 +432,8 @@ class CQSchem : public QFrame {
   void calcBounds();
 
   void exec();
+
+  void test();
 
   void resizeEvent(QResizeEvent *);
 
@@ -380,7 +458,18 @@ class CQSchem : public QFrame {
   static void drawConnection(CQSchemRenderer *renderer, const QPointF &p1, const QPointF &p2);
 
   static void drawTextInRect(CQSchemRenderer *renderer, const QRectF &r, const QString &text);
-  static void drawTextAtPoint(CQSchemRenderer *renderer, const QPointF &p, const QString &text);
+
+  static void drawTextOnLine(CQSchemRenderer *renderer, const QPointF &p1, const QPointF &p2,
+                             const QString &name, TextLinePos pos=TextLinePos::MIDDLE);
+
+  static void drawTextAtPoint(CQSchemRenderer *renderer, const QPointF &p, const QString &text,
+                              TextAlign align=TextAlign::CENTER);
+
+  static void drawLine(CQSchemRenderer *renderer, const QPointF &p1, const QPointF &p2);
+
+ private slots:
+  void expandSlot();
+  void collapseSlot();
 
  private:
   using Buses           = std::vector<CQBus *>;
@@ -397,6 +486,7 @@ class CQSchem : public QFrame {
   bool              connectionVisible_     { true };
   bool              placementGroupVisible_ { false };
   bool              gateVisible_           { true };
+  bool              collapseBus_           { false };
   Gates             gates_;
   Buses             buses_;
   Connections       connections_;
@@ -458,10 +548,17 @@ class CQConnection {
   bool isInput () const { return (inPorts_.empty() && ! outPorts_.empty()); }
   bool isOutput() const { return (! inPorts_.empty() && outPorts_.empty()); }
 
+  bool isLR() const;
+
+  bool isLeft() const;
+  bool isTop () const;
+
   bool inside(const QPointF &p) const;
 
   void draw(CQSchemRenderer *renderer) const;
 
+  QPointF imidPoint() const;
+  QPointF omidPoint() const;
   QPointF midPoint() const;
 
   QColor penColor(CQSchemRenderer *renderer) const;
@@ -501,8 +598,23 @@ class CQBus {
  public:
   CQBus(const QString &name="", int n=8);
 
+  const QString &name() const { return name_; }
+  void setName(const QString &v) { name_ = v; }
+
+  int n() const { return n_; }
+
+  CQGate *gate() const { return gate_; }
+  void setGate(CQGate *gate) { gate_ = gate; }
+
+  bool isFlipped() const { return flipped_; }
+  void setFlipped(bool b) { flipped_ = b; }
+
   const Position &position() const { return position_; }
-  void setPosition(const Position &v) { position_ = v; }
+  double offset() const { return offset_; }
+
+  void setPosition(const Position &position, double offset=0.0) {
+    position_ = position; offset_ = offset;
+  }
 
   void addConnection(CQConnection *connection, int i);
 
@@ -515,8 +627,11 @@ class CQBus {
 
   QString     name_;
   int         n_            { 8 };
+  CQGate*     gate_         { nullptr };
   Connections connections_;
+  int         flipped_      { false };
   Position    position_     { Position::MIDDLE };
+  double      offset_       { 0.0 };
 };
 
 //---
@@ -608,15 +723,18 @@ class CQGate {
   using Ports = std::vector<CQPort *>;
 
  public:
-  CQGate(const QString &name) :
-   name_(name) {
-  }
+  CQGate(const QString &name);
+
+  virtual ~CQGate();
 
   const QString &name() const { return name_; }
   void setName(const QString &v) { name_ = v; }
 
   const Orientation &orientation() const { return orientation_; }
   void setOrientation(const Orientation &v) { orientation_ = v; }
+
+  bool isFlipped() const { return flipped_; }
+  void setFlipped(bool b) { flipped_ = b; }
 
   bool isSelected() const { return selected_; }
   void setSelected(bool b) { selected_ = b; }
@@ -751,16 +869,24 @@ class CQGate {
 
   virtual void draw(CQSchemRenderer *renderer) const;
 
+  void drawRect(CQSchemRenderer *renderer) const;
+
+  void drawAnd(CQSchemRenderer *renderer) const;
   void drawAnd(CQSchemRenderer *renderer, double x1, double y1, double x2, double y2) const;
 
+  void drawOr(CQSchemRenderer *renderer) const;
+  void drawOr(CQSchemRenderer *renderer, double &x3, double &y3) const;
   void drawOr(CQSchemRenderer *renderer, double x1, double y1, double x2, double y2,
               double &x3, double &y3) const;
 
+  void drawXor(CQSchemRenderer *renderer) const;
   void drawXor(CQSchemRenderer *renderer, double x1, double y1, double x2, double y2) const;
 
   void drawNot(CQSchemRenderer *renderer) const;
 
   void drawNotIndicator(CQSchemRenderer *renderer) const;
+
+  void drawAdder(CQSchemRenderer *renderer) const;
 
   void placePorts(int ni=-1, int no=-1) const;
   void placePorts(double pix1, double piy1, double pix2, double piy2,
@@ -810,6 +936,7 @@ class CQGate {
  protected:
   QString           name_;
   Orientation       orientation_    { Orientation::R0 };
+  bool              flipped_        { false };
   bool              selected_       { false };
   Ports             inputs_;
   Ports             outputs_;
@@ -885,6 +1012,8 @@ class CQAnd8Gate : public CQGate {
   bool exec() override;
 
   void draw(CQSchemRenderer *renderer) const override;
+
+  static QString iname(int i) { return QString("i%1").arg(i); }
 };
 
 //---
@@ -896,6 +1025,19 @@ class CQOrGate : public CQGate {
   bool exec() override;
 
   void draw(CQSchemRenderer *renderer) const override;
+};
+
+//---
+
+class CQOr8Gate : public CQGate {
+ public:
+  CQOr8Gate(const QString &name="");
+
+  bool exec() override;
+
+  void draw(CQSchemRenderer *renderer) const override;
+
+  static QString iname(int i) { return QString("i%1").arg(i); }
 };
 
 //---
@@ -1066,7 +1208,7 @@ class CQDecoder16Gate : public CQGate {
     int i1 = (i & 1);
     int i2 = (i & 2) >> 1;
     int i3 = (i & 4) >> 2;
-    int i4 = (i & 8) >> 2;
+    int i4 = (i & 8) >> 3;
 
     return QString("%1/%2/%3/%4").arg(i4).arg(i3).arg(i2).arg(i1);
   }
@@ -1149,6 +1291,65 @@ class CQRShiftGate : public CQGate {
 
 //---
 
+class CQInverterGate : public CQGate {
+ public:
+  CQInverterGate(const QString &name);
+
+  bool exec() override;
+
+  void draw(CQSchemRenderer *renderer) const override;
+
+  static QString iname(int i) { return QString("a%1").arg(i); }
+  static QString oname(int i) { return QString("c%1").arg(i); }
+};
+
+//---
+
+class CQAnderGate : public CQGate {
+ public:
+  CQAnderGate(const QString &name);
+
+  bool exec() override;
+
+  void draw(CQSchemRenderer *renderer) const override;
+
+  static QString aname(int i) { return QString("a%1").arg(i); }
+  static QString bname(int i) { return QString("b%1").arg(i); }
+  static QString cname(int i) { return QString("c%1").arg(i); }
+};
+
+//---
+
+class CQOrerGate : public CQGate {
+ public:
+  CQOrerGate(const QString &name);
+
+  bool exec() override;
+
+  void draw(CQSchemRenderer *renderer) const override;
+
+  static QString aname(int i) { return QString("a%1").arg(i); }
+  static QString bname(int i) { return QString("b%1").arg(i); }
+  static QString cname(int i) { return QString("c%1").arg(i); }
+};
+
+//---
+
+class CQXorerGate : public CQGate {
+ public:
+  CQXorerGate(const QString &name);
+
+  bool exec() override;
+
+  void draw(CQSchemRenderer *renderer) const override;
+
+  static QString aname(int i) { return QString("a%1").arg(i); }
+  static QString bname(int i) { return QString("b%1").arg(i); }
+  static QString cname(int i) { return QString("c%1").arg(i); }
+};
+
+//---
+
 class CQAdderGate : public CQGate {
  public:
   CQAdderGate(const QString &name);
@@ -1156,6 +1357,91 @@ class CQAdderGate : public CQGate {
   bool exec() override;
 
   void draw(CQSchemRenderer *renderer) const override;
+};
+
+//---
+
+class CQAdder8Gate : public CQGate {
+ public:
+  CQAdder8Gate(const QString &name);
+
+  bool exec() override;
+
+  void draw(CQSchemRenderer *renderer) const override;
+
+  static QString aname(int i) { return QString("a%1").arg(i); }
+  static QString bname(int i) { return QString("b%1").arg(i); }
+  static QString cname(int i) { return QString("c%1").arg(i); }
+};
+
+//---
+
+class CQComparatorGate : public CQGate {
+ public:
+  CQComparatorGate(const QString &name);
+
+  bool exec() override;
+
+  void draw(CQSchemRenderer *renderer) const override;
+};
+
+//---
+
+class CQComparator8Gate : public CQGate {
+ public:
+  CQComparator8Gate(const QString &name);
+
+  bool exec() override;
+
+  void draw(CQSchemRenderer *renderer) const override;
+
+  static QString aname(int i) { return QString("a%1").arg(i); }
+  static QString bname(int i) { return QString("b%1").arg(i); }
+  static QString cname(int i) { return QString("c%1").arg(i); }
+};
+
+//---
+
+class CQBus0Gate : public CQGate {
+ public:
+  CQBus0Gate(const QString &name);
+
+  bool exec() override;
+
+  void draw(CQSchemRenderer *renderer) const override;
+
+  static QString iname(int i) { return QString("i%1").arg(i); }
+};
+
+//---
+
+class CQBus1Gate : public CQGate {
+ public:
+  CQBus1Gate(const QString &name);
+
+  bool exec() override;
+
+  void draw(CQSchemRenderer *renderer) const override;
+
+  static QString iname(int i) { return QString("i%1").arg(i); }
+  static QString oname(int i) { return QString("o%1").arg(i); }
+};
+
+//---
+
+class CQAluGate : public CQGate {
+ public:
+  CQAluGate(const QString &name);
+
+  bool exec() override;
+
+  void draw(CQSchemRenderer *renderer) const override;
+
+  static QString aname(int i) { return QString("a%1").arg(i); }
+  static QString bname(int i) { return QString("b%1").arg(i); }
+  static QString cname(int i) { return QString("c%1").arg(i); }
+
+  static QString opname(int i) { return QString("op%1").arg(i); }
 };
 
 #endif

@@ -5,6 +5,8 @@
 #include <QVBoxLayout>
 #include <QPainter>
 #include <QMouseEvent>
+#include <QMenu>
+#include <QAction>
 #include <cassert>
 
 #include <svg/connection_text_svg.h>
@@ -16,6 +18,7 @@
 #include <svg/connection_visible_svg.h>
 #include <svg/gate_visible_svg.h>
 #include <svg/placement_group_visible_svg.h>
+#include <svg/collapse_bus_svg.h>
 
 int
 main(int argc, char **argv)
@@ -26,59 +29,19 @@ main(int argc, char **argv)
 
   CQSchem *schem = window->schem();
 
+  bool test = false;
+
   for (int i = 1; i < argc; ++i) {
     if (argv[i][0] == '-') {
       std::string arg = &argv[i][1];
 
-      if      (arg == "nand"      ) schem->addNandGate();
-      else if (arg == "not"       ) schem->addNotGate();
-      else if (arg == "and"       ) schem->addAndGate();
-      else if (arg == "and3"      ) schem->addAnd3Gate();
-      else if (arg == "and4"      ) schem->addAnd4Gate();
-      else if (arg == "and8"      ) schem->addAnd8Gate();
-      else if (arg == "or"        ) schem->addOrGate();
-      else if (arg == "xor"       ) schem->addXorGate();
-      else if (arg == "memory"    ) schem->addMemoryGate();
-      else if (arg == "memory8"   ) schem->addMemory8Gate();
-      else if (arg == "enabler"   ) schem->addEnablerGate();
-      else if (arg == "register"  ) schem->addRegisterGate();
-      else if (arg == "decoder4"  ) schem->addDecoder4Gate();
-      else if (arg == "decoder8"  ) schem->addDecoder8Gate();
-      else if (arg == "decoder16" ) schem->addDecoder16Gate();
-      else if (arg == "decoder256") schem->addDecoder256Gate();
-      else if (arg == "lshift"    ) schem->addLShiftGate();
-      else if (arg == "rshift"    ) schem->addRShiftGate();
-      else if (arg == "adder"     ) schem->addAdderGate();
+      if (schem->execGate(arg.c_str()))
+        continue;
 
-      else if (arg == "build_not"        ) schem->buildNotGate();
-      else if (arg == "build_and"        ) schem->buildAndGate();
-      else if (arg == "build_and3"       ) schem->buildAnd3Gate();
-      else if (arg == "build_and4"       ) schem->buildAnd4Gate();
-      else if (arg == "build_and8"       ) schem->buildAnd8Gate();
-      else if (arg == "build_or"         ) schem->buildOrGate();
-      else if (arg == "build_xor"        ) schem->buildXorGate();
-      else if (arg == "build_memory"     ) schem->buildMemoryGate();
-      else if (arg == "build_memory8"    ) schem->buildMemory8Gate();
-      else if (arg == "build_enabler"    ) schem->buildEnablerGate();
-      else if (arg == "build_register"   ) schem->buildRegisterGate();
-      else if (arg == "build_decoder4"   ) schem->buildDecoder4Gate();
-      else if (arg == "build_decoder8"   ) schem->buildDecoder8Gate();
-      else if (arg == "build_decoder16"  ) schem->buildDecoder16Gate();
-      else if (arg == "build_decoder256" ) schem->buildDecoder256Gate();
-      else if (arg == "build_lshift"     ) schem->buildLShift();
-      else if (arg == "build_rshift"     ) schem->buildRShift();
-      else if (arg == "build_inverter"   ) schem->buildInverter();
-      else if (arg == "build_ander"      ) schem->buildAnder();
-      else if (arg == "build_orer"       ) schem->buildOrer();
-      else if (arg == "build_xorer"      ) schem->buildXorer();
-      else if (arg == "build_adder"      ) schem->buildAdder();
-      else if (arg == "build_adder8"     ) schem->buildAdder8();
-      else if (arg == "build_comparator" ) schem->buildComparator();
-      else if (arg == "build_comparator8") schem->buildComparator8();
-      else if (arg == "build_ram256"     ) schem->buildRam256();
-      else if (arg == "build_ram65536"   ) schem->buildRam65536();
-
-      else std::cerr << "Invalid arg '-" << arg << "'\n";
+      if (arg == "test")
+        test = true;
+      else
+        std::cerr << "Invalid arg '-" << arg << "'\n";
     }
   }
 
@@ -86,9 +49,14 @@ main(int argc, char **argv)
 
   schem->exec();
 
-  window->show();
+  if (test) {
+    schem->test();
+  }
+  else {
+    window->show();
 
-  app.exec();
+    app.exec();
+  }
 }
 
 //------
@@ -171,6 +139,11 @@ CQSchemWindow()
                   schem_->isPlacementGroupVisible(), "Placement Group Visible",
                   SLOT(placementGroupVisibleSlot(bool)));
 
+  QToolButton *collapseBusButton =
+    addToolButton("collapseBus", "COLLAPSE_BUS",
+                  schem_->isCollapseBus(), "Collapse Bus",
+                  SLOT(collapseBusSlot(bool)));
+
   controlLayout->addWidget(connectionTextButton);
   controlLayout->addWidget(gateTextButton);
   controlLayout->addWidget(portTextButton);
@@ -182,6 +155,8 @@ CQSchemWindow()
   controlLayout->addWidget(connectionVisibleButton);
   controlLayout->addWidget(gateVisibleButton);
   controlLayout->addWidget(placementGroupVisibleButton);
+
+  controlLayout->addWidget(collapseBusButton);
 
   controlLayout->addStretch(1);
 
@@ -281,6 +256,15 @@ CQSchemWindow::placementGroupVisibleSlot(bool b)
   update();
 }
 
+void
+CQSchemWindow::
+collapseBusSlot(bool b)
+{
+  schem_->setCollapseBus(b);
+
+  update();
+}
+
 QSize
 CQSchemWindow::
 sizeHint() const
@@ -316,18 +300,139 @@ CQSchem(CQSchemWindow *window) :
 CQSchem::
 ~CQSchem()
 {
+  clear();
+}
+
+void
+CQSchem::
+clear()
+{
+  for (auto &gate : gates_)
+    delete gate;
+
+  gates_.clear();
+
+  for (auto &bus : buses_)
+    delete bus;
+
+  buses_.clear();
+
+  for (auto &connection : connections_)
+    delete connection;
+
+  connections_.clear();
+
   delete placementGroup_;
+
+  placementGroup_ = new CQPlacementGroup;
+
+  rect_ = QRectF();
+
+  pressGate_        = nullptr;
+  pressPlacement_   = nullptr;
+  insideGate_       = nullptr;
+  insidePlacement_  = nullptr;
+  insideConnection_ = nullptr;
+}
+
+bool
+CQSchem::
+execGate(const QString &name)
+{
+  if      (name == "nand"       ) addNandGate();
+  else if (name == "not"        ) addNotGate();
+  else if (name == "and"        ) addAndGate();
+  else if (name == "and3"       ) addAnd3Gate();
+  else if (name == "and4"       ) addAnd4Gate();
+  else if (name == "and8"       ) addAnd8Gate();
+  else if (name == "or"         ) addOrGate();
+  else if (name == "or8"        ) addOr8Gate();
+  else if (name == "xor"        ) addXorGate();
+  else if (name == "memory"     ) addMemoryGate();
+  else if (name == "memory8"    ) addMemory8Gate();
+  else if (name == "enabler"    ) addEnablerGate();
+  else if (name == "register"   ) addRegisterGate();
+  else if (name == "decoder4"   ) addDecoder4Gate();
+  else if (name == "decoder8"   ) addDecoder8Gate();
+  else if (name == "decoder16"  ) addDecoder16Gate();
+  else if (name == "decoder256" ) addDecoder256Gate();
+  else if (name == "lshift"     ) addLShiftGate();
+  else if (name == "rshift"     ) addRShiftGate();
+  else if (name == "inverter"   ) addInverterGate();
+  else if (name == "ander"      ) addAnderGate();
+  else if (name == "orer"       ) addOrerGate();
+  else if (name == "xorer"      ) addXorerGate();
+  else if (name == "adder"      ) addAdderGate();
+  else if (name == "adder8"     ) addAdder8Gate();
+  else if (name == "comparator" ) addComparatorGate();
+  else if (name == "comparator8") addComparator8Gate();
+  else if (name == "bus0"       ) addBus0Gate();
+  else if (name == "bus1"       ) addBus1Gate();
+  else if (name == "alu"        ) addAluGate();
+
+  else if (name == "build_not"        ) buildNotGate();
+  else if (name == "build_and"        ) buildAndGate();
+  else if (name == "build_and3"       ) buildAnd3Gate();
+  else if (name == "build_and4"       ) buildAnd4Gate();
+  else if (name == "build_and8"       ) buildAnd8Gate();
+  else if (name == "build_or"         ) buildOrGate();
+  else if (name == "build_or8"        ) buildOr8Gate();
+  else if (name == "build_xor"        ) buildXorGate();
+  else if (name == "build_memory"     ) buildMemoryGate();
+  else if (name == "build_memory8"    ) buildMemory8Gate();
+  else if (name == "build_enabler"    ) buildEnablerGate();
+  else if (name == "build_register"   ) buildRegisterGate();
+  else if (name == "build_decoder4"   ) buildDecoder4Gate();
+  else if (name == "build_decoder8"   ) buildDecoder8Gate();
+  else if (name == "build_decoder16"  ) buildDecoder16Gate();
+  else if (name == "build_decoder256" ) buildDecoder256Gate();
+  else if (name == "build_lshift"     ) buildLShift();
+  else if (name == "build_rshift"     ) buildRShift();
+  else if (name == "build_inverter"   ) buildInverter();
+  else if (name == "build_ander"      ) buildAnder();
+  else if (name == "build_orer"       ) buildOrer();
+  else if (name == "build_xorer"      ) buildXorer();
+  else if (name == "build_adder"      ) buildAdder();
+  else if (name == "build_adder8"     ) buildAdder8();
+  else if (name == "build_comparator" ) buildComparator();
+  else if (name == "build_comparator8") buildComparator8();
+  else if (name == "build_bus0"       ) buildBus0();
+  else if (name == "build_bus1"       ) buildBus1();
+  else if (name == "build_ram256"     ) buildRam256();
+  else if (name == "build_ram65536"   ) buildRam65536();
+  else if (name == "build_alu"        ) buildAlu();
+
+  else return false;
+
+  return true;
 }
 
 void
 CQSchem::
 addNandGate()
 {
-  CQNandGate *gate = addGateT<CQNandGate>();
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
 
-  CQConnection *in1 = addConnection("a");
-  CQConnection *in2 = addConnection("b");
-  CQConnection *out = addConnection("c");
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  //---
+
+  CQNandGate *gate = addGateT<CQNandGate>("nand");
+
+  placementGroup->addGate(gate);
+
+  CQConnection *in1 = addPlacementConn("a");
+  CQConnection *in2 = addPlacementConn("b");
+  CQConnection *out = addPlacementConn("c");
 
   gate->connect("a", in1);
   gate->connect("b", in2);
@@ -338,10 +443,29 @@ void
 CQSchem::
 addNotGate()
 {
-  CQNotGate *gate = addGateT<CQNotGate>();
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
 
-  CQConnection *in  = addConnection("a");
-  CQConnection *out = addConnection("c");
+  placementGroup->setExpandName("build_not");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  //---
+
+  CQNotGate *gate = addGateT<CQNotGate>("not");
+
+  placementGroup->addGate(gate);
+
+  CQConnection *in  = addPlacementConn("a");
+  CQConnection *out = addPlacementConn("c");
 
   gate->connect("a", in );
   gate->connect("c", out);
@@ -351,11 +475,30 @@ void
 CQSchem::
 addAndGate()
 {
-  CQAndGate *gate = addGateT<CQAndGate>();
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
 
-  CQConnection *in1 = addConnection("a");
-  CQConnection *in2 = addConnection("b");
-  CQConnection *out = addConnection("c");
+  placementGroup->setExpandName("build_and");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  //---
+
+  CQAndGate *gate = addGateT<CQAndGate>("and");
+
+  placementGroup->addGate(gate);
+
+  CQConnection *in1 = addPlacementConn("a");
+  CQConnection *in2 = addPlacementConn("b");
+  CQConnection *out = addPlacementConn("c");
 
   gate->connect("a", in1);
   gate->connect("b", in2);
@@ -366,12 +509,31 @@ void
 CQSchem::
 addAnd3Gate()
 {
-  CQAnd3Gate *gate = addGateT<CQAnd3Gate>();
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
 
-  CQConnection *in1 = addConnection("a");
-  CQConnection *in2 = addConnection("b");
-  CQConnection *in3 = addConnection("c");
-  CQConnection *out = addConnection("d");
+  placementGroup->setExpandName("build_and3");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  //---
+
+  CQAnd3Gate *gate = addGateT<CQAnd3Gate>("and3");
+
+  placementGroup->addGate(gate);
+
+  CQConnection *in1 = addPlacementConn("a");
+  CQConnection *in2 = addPlacementConn("b");
+  CQConnection *in3 = addPlacementConn("c");
+  CQConnection *out = addPlacementConn("d");
 
   gate->connect("a", in1);
   gate->connect("b", in2);
@@ -383,13 +545,32 @@ void
 CQSchem::
 addAnd4Gate()
 {
-  CQAnd4Gate *gate = addGateT<CQAnd4Gate>();
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
 
-  CQConnection *in1 = addConnection("a");
-  CQConnection *in2 = addConnection("b");
-  CQConnection *in3 = addConnection("c");
-  CQConnection *in4 = addConnection("d");
-  CQConnection *out = addConnection("e");
+  placementGroup->setExpandName("build_and4");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  //---
+
+  CQAnd4Gate *gate = addGateT<CQAnd4Gate>("and4");
+
+  placementGroup->addGate(gate);
+
+  CQConnection *in1 = addPlacementConn("a");
+  CQConnection *in2 = addPlacementConn("b");
+  CQConnection *in3 = addPlacementConn("c");
+  CQConnection *in4 = addPlacementConn("d");
+  CQConnection *out = addPlacementConn("e");
 
   gate->connect("a", in1);
   gate->connect("b", in2);
@@ -402,38 +583,81 @@ void
 CQSchem::
 addAnd8Gate()
 {
-  CQAnd8Gate *gate = addGateT<CQAnd8Gate>();
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
 
-  CQConnection *in1 = addConnection("a");
-  CQConnection *in2 = addConnection("b");
-  CQConnection *in3 = addConnection("c");
-  CQConnection *in4 = addConnection("d");
-  CQConnection *in5 = addConnection("e");
-  CQConnection *in6 = addConnection("f");
-  CQConnection *in7 = addConnection("g");
-  CQConnection *in8 = addConnection("h");
-  CQConnection *out = addConnection("i");
+  placementGroup->setExpandName("build_and8");
 
-  gate->connect("a", in1);
-  gate->connect("b", in2);
-  gate->connect("c", in3);
-  gate->connect("d", in4);
-  gate->connect("e", in5);
-  gate->connect("f", in6);
-  gate->connect("g", in7);
-  gate->connect("h", in8);
-  gate->connect("e", out);
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  auto addPlacementBus = [&](const QString &name, int n) {
+    CQBus *bus = addBus(name, n);
+
+    placementGroup->addBus(bus);
+
+    return bus;
+  };
+
+  //---
+
+  CQAnd8Gate *gate = addGateT<CQAnd8Gate>("and8");
+
+  placementGroup->addGate(gate);
+
+  CQConnection *in[8];
+
+  CQBus *ibus = addPlacementBus("i", 8);
+
+  for (int i = 0; i < 8; ++i) {
+    in[i] = addPlacementConn(CQAnd8Gate::iname(i));
+
+    ibus->addConnection(in[i], i);
+  }
+
+  CQConnection *out = addPlacementConn("o");
+
+  for (int i = 0; i < 8; ++i)
+    gate->connect(CQAnd8Gate::iname(i), in[i]);
+
+  gate->connect("o", out);
 }
 
 void
 CQSchem::
 addOrGate()
 {
-  CQOrGate *gate = addGateT<CQOrGate>();
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
 
-  CQConnection *in1 = addConnection("a");
-  CQConnection *in2 = addConnection("b");
-  CQConnection *out = addConnection("c");
+  placementGroup->setExpandName("build_or");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  //---
+
+  CQOrGate *gate = addGateT<CQOrGate>("or");
+
+  placementGroup->addGate(gate);
+
+  CQConnection *in1 = addPlacementConn("a");
+  CQConnection *in2 = addPlacementConn("b");
+  CQConnection *out = addPlacementConn("c");
 
   gate->connect("a", in1);
   gate->connect("b", in2);
@@ -442,13 +666,83 @@ addOrGate()
 
 void
 CQSchem::
+addOr8Gate()
+{
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
+
+  placementGroup->setExpandName("build_or8");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  auto addPlacementBus = [&](const QString &name, int n) {
+    CQBus *bus = addBus(name, n);
+
+    placementGroup->addBus(bus);
+
+    return bus;
+  };
+
+  //---
+
+  CQOr8Gate *gate = addGateT<CQOr8Gate>("or8");
+
+  placementGroup->addGate(gate);
+
+  CQConnection *in[8];
+
+  CQBus *ibus = addPlacementBus("i", 8);
+
+  for (int i = 0; i < 8; ++i) {
+    in[i] = addPlacementConn(CQOr8Gate::iname(i));
+
+    ibus->addConnection(in[i], i);
+  }
+
+  CQConnection *out = addPlacementConn("o");
+
+  for (int i = 0; i < 8; ++i)
+    gate->connect(CQOr8Gate::iname(i), in[i]);
+
+  gate->connect("o", out);
+}
+
+void
+CQSchem::
 addXorGate()
 {
-  CQXorGate *gate = addGateT<CQXorGate>();
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
 
-  CQConnection *in1 = addConnection("a");
-  CQConnection *in2 = addConnection("b");
-  CQConnection *out = addConnection("c");
+  placementGroup->setExpandName("build_xor");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  //---
+
+  CQXorGate *gate = addGateT<CQXorGate>("xor");
+
+  placementGroup->addGate(gate);
+
+  CQConnection *in1 = addPlacementConn("a");
+  CQConnection *in2 = addPlacementConn("b");
+  CQConnection *out = addPlacementConn("c");
 
   gate->connect("a", in1);
   gate->connect("b", in2);
@@ -459,11 +753,30 @@ void
 CQSchem::
 addMemoryGate()
 {
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
+
+  placementGroup->setExpandName("build_memory");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  //---
+
   CQMemoryGate *gate = addGateT<CQMemoryGate>("M");
 
-  CQConnection *in1 = addConnection("i");
-  CQConnection *in2 = addConnection("s");
-  CQConnection *out = addConnection("o");
+  placementGroup->addGate(gate);
+
+  CQConnection *in1 = addPlacementConn("i");
+  CQConnection *in2 = addPlacementConn("s");
+  CQConnection *out = addPlacementConn("o");
 
   gate->connect("i", in1);
   gate->connect("s", in2);
@@ -474,14 +787,44 @@ void
 CQSchem::
 addMemory8Gate()
 {
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
+
+  placementGroup->setExpandName("build_memory8");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  auto addPlacementBus = [&](const QString &name, int n) {
+    CQBus *bus = addBus(name, n);
+
+    placementGroup->addBus(bus);
+
+    return bus;
+  };
+
+  //---
+
   CQMemory8Gate *gate = addGateT<CQMemory8Gate>("B");
 
-  CQConnection *cons = addConnection("s");
+  placementGroup->addGate(gate);
+
+  CQConnection *cons = addPlacementConn("s");
 
   gate->connect("s", cons);
 
-  CQBus *ibus = addBus("i", 8);
-  CQBus *obus = addBus("o", 8);
+  CQBus *ibus = addPlacementBus("i", 8);
+  CQBus *obus = addPlacementBus("o", 8);
+
+  ibus->setGate(gate);
+  obus->setGate(gate);
 
   CQConnection *coni[8];
   CQConnection *cono[8];
@@ -490,8 +833,8 @@ addMemory8Gate()
     QString iname = CQMemory8Gate::iname(i);
     QString oname = CQMemory8Gate::oname(i);
 
-    coni[i] = addConnection(iname);
-    cono[i] = addConnection(oname);
+    coni[i] = addPlacementConn(iname);
+    cono[i] = addPlacementConn(oname);
 
     gate->connect(iname, coni[i]);
     gate->connect(oname, cono[i]);
@@ -505,14 +848,40 @@ void
 CQSchem::
 addEnablerGate()
 {
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
+
+  placementGroup->setExpandName("build_enabler");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  auto addPlacementBus = [&](const QString &name, int n) {
+    CQBus *bus = addBus(name, n);
+
+    placementGroup->addBus(bus);
+
+    return bus;
+  };
+
+  //---
+
   CQEnablerGate *gate = addGateT<CQEnablerGate>("E");
 
-  CQConnection *cone = addConnection("e");
+  placementGroup->addGate(gate);
 
-  gate->connect("e", cone);
+  CQBus *ibus = addPlacementBus("i", 8);
+  CQBus *obus = addPlacementBus("o", 8);
 
-  CQBus *ibus = addBus("i", 8);
-  CQBus *obus = addBus("o", 8);
+  ibus->setGate(gate);
+  obus->setGate(gate);
 
   CQConnection *coni[8];
   CQConnection *cono[8];
@@ -521,8 +890,8 @@ addEnablerGate()
     QString iname = CQEnablerGate::iname(i);
     QString oname = CQEnablerGate::oname(i);
 
-    coni[i] = addConnection(iname);
-    cono[i] = addConnection(oname);
+    coni[i] = addPlacementConn(iname);
+    cono[i] = addPlacementConn(oname);
 
     gate->connect(iname, coni[i]);
     gate->connect(oname, cono[i]);
@@ -530,19 +899,53 @@ addEnablerGate()
     ibus->addConnection(coni[i], i);
     obus->addConnection(cono[i], i);
   }
+
+  CQConnection *cone = addPlacementConn("e");
+
+  gate->connect("e", cone);
 }
 
 void
 CQSchem::
 addRegisterGate()
 {
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
+
+  placementGroup->setExpandName("build_register");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  auto addPlacementBus = [&](const QString &name, int n) {
+    CQBus *bus = addBus(name, n);
+
+    placementGroup->addBus(bus);
+
+    return bus;
+  };
+
+  //---
+
   CQRegisterGate *gate = addGateT<CQRegisterGate>("R");
 
-  gate->connect("s", addConnection("s"));
-  gate->connect("e", addConnection("e"));
+  placementGroup->addGate(gate);
 
-  CQBus *ibus = addBus("i", 8);
-  CQBus *obus = addBus("o", 8);
+  gate->connect("s", addPlacementConn("s"));
+  gate->connect("e", addPlacementConn("e"));
+
+  CQBus *ibus = addPlacementBus("i", 8);
+  CQBus *obus = addPlacementBus("o", 8);
+
+  ibus->setGate(gate);
+  obus->setGate(gate);
 
   CQConnection *coni[8];
   CQConnection *cono[8];
@@ -551,8 +954,8 @@ addRegisterGate()
     QString iname = CQRegisterGate::iname(i);
     QString oname = CQRegisterGate::oname(i);
 
-    coni[i] = addConnection(iname);
-    cono[i] = addConnection(oname);
+    coni[i] = addPlacementConn(iname);
+    cono[i] = addPlacementConn(oname);
 
     gate->connect(iname, coni[i]);
     gate->connect(oname, cono[i]);
@@ -566,12 +969,31 @@ void
 CQSchem::
 addDecoder4Gate()
 {
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
+
+  placementGroup->setExpandName("build_decoder4");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  //---
+
   CQDecoder4Gate *gate = addGateT<CQDecoder4Gate>("2x4");
+
+  placementGroup->addGate(gate);
 
   for (int i = 0; i < 2; ++i) {
     QString iname = CQDecoder4Gate::iname(i);
 
-    CQConnection *con = addConnection(iname);
+    CQConnection *con = addPlacementConn(iname);
 
     gate->connect(iname, con);
   }
@@ -579,7 +1001,7 @@ addDecoder4Gate()
   for (int i = 0; i < 4; ++i) {
     QString oname = CQDecoder4Gate::oname(i);
 
-    CQConnection *cono = addConnection(oname);
+    CQConnection *cono = addPlacementConn(oname);
 
     gate->connect(oname, cono);
   }
@@ -589,12 +1011,31 @@ void
 CQSchem::
 addDecoder8Gate()
 {
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
+
+  placementGroup->setExpandName("build_decoder8");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  //---
+
   CQDecoder8Gate *gate = addGateT<CQDecoder8Gate>("3x8");
+
+  placementGroup->addGate(gate);
 
   for (int i = 0; i < 3; ++i) {
     QString iname = CQDecoder8Gate::iname(i);
 
-    CQConnection *con = addConnection(iname);
+    CQConnection *con = addPlacementConn(iname);
 
     gate->connect(iname, con);
   }
@@ -602,7 +1043,7 @@ addDecoder8Gate()
   for (int i = 0; i < 8; ++i) {
     QString oname = CQDecoder8Gate::oname(i);
 
-    CQConnection *cono = addConnection(oname);
+    CQConnection *cono = addPlacementConn(oname);
 
     gate->connect(oname, cono);
   }
@@ -612,12 +1053,31 @@ void
 CQSchem::
 addDecoder16Gate()
 {
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
+
+  placementGroup->setExpandName("build_decoder16");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  //---
+
   CQDecoder16Gate *gate = addGateT<CQDecoder16Gate>("4x16");
+
+  placementGroup->addGate(gate);
 
   for (int i = 0; i < 4; ++i) {
     QString iname = CQDecoder16Gate::iname(i);
 
-    CQConnection *coni = addConnection(iname);
+    CQConnection *coni = addPlacementConn(iname);
 
     gate->connect(iname, coni);
   }
@@ -625,7 +1085,7 @@ addDecoder16Gate()
   for (int i = 0; i < 16; ++i) {
     QString oname = CQDecoder16Gate::oname(i);
 
-    CQConnection *cono = addConnection(oname);
+    CQConnection *cono = addPlacementConn(oname);
 
     gate->connect(oname, cono);
   }
@@ -635,12 +1095,31 @@ void
 CQSchem::
 addDecoder256Gate()
 {
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
+
+  placementGroup->setExpandName("build_decoder256");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  //---
+
   CQDecoder256Gate *gate = addGateT<CQDecoder256Gate>("8x256");
+
+  placementGroup->addGate(gate);
 
   for (int i = 0; i < 8; ++i) {
     QString iname = CQDecoder256Gate::iname(i);
 
-    CQConnection *coni = addConnection(iname);
+    CQConnection *coni = addPlacementConn(iname);
 
     gate->connect(iname, coni);
   }
@@ -648,7 +1127,7 @@ addDecoder256Gate()
   for (int i = 0; i < 256; ++i) {
     QString oname = CQDecoder256Gate::oname(i);
 
-    CQConnection *cono = addConnection(oname);
+    CQConnection *cono = addPlacementConn(oname);
 
     gate->connect(oname, cono);
   }
@@ -658,23 +1137,53 @@ void
 CQSchem::
 addLShiftGate()
 {
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
+
+  placementGroup->setExpandName("build_lshift");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  auto addPlacementBus = [&](const QString &name, int n) {
+    CQBus *bus = addBus(name, n);
+
+    placementGroup->addBus(bus);
+
+    return bus;
+  };
+
+  //---
+
   CQLShiftGate *gate = addGateT<CQLShiftGate>("SHL");
 
-  gate->connect("s", addConnection("s"));
-  gate->connect("e", addConnection("e"));
+  placementGroup->addGate(gate);
 
-  CQBus *ibus = addBus("i", 8);
-  CQBus *obus = addBus("o", 8);
+  gate->connect("s", addPlacementConn("s"));
+  gate->connect("e", addPlacementConn("e"));
+
+  CQBus *ibus = addPlacementBus("i", 8);
+  CQBus *obus = addPlacementBus("o", 8);
+
+  ibus->setGate(gate);
+  obus->setGate(gate);
 
   CQConnection *icon[8];
   CQConnection *ocon[8];
 
-  gate->connect("shift_in" , addConnection("shift_in" ));
-  gate->connect("shift_out", addConnection("shift_out"));
+  gate->connect("shift_in" , addPlacementConn("shift_in" ));
+  gate->connect("shift_out", addPlacementConn("shift_out"));
 
   for (int i = 0; i < 8; ++i) {
-    icon[i] = addConnection(CQLShiftGate::iname(i));
-    ocon[i] = addConnection(CQLShiftGate::oname(i));
+    icon[i] = addPlacementConn(CQLShiftGate::iname(i));
+    ocon[i] = addPlacementConn(CQLShiftGate::oname(i));
 
     gate->connect(CQLShiftGate::iname(i), icon[i]);
     gate->connect(CQLShiftGate::oname(i), ocon[i]);
@@ -688,23 +1197,53 @@ void
 CQSchem::
 addRShiftGate()
 {
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
+
+  placementGroup->setExpandName("build_rshift");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  auto addPlacementBus = [&](const QString &name, int n) {
+    CQBus *bus = addBus(name, n);
+
+    placementGroup->addBus(bus);
+
+    return bus;
+  };
+
+  //---
+
   CQRShiftGate *gate = addGateT<CQRShiftGate>("SHR");
 
-  gate->connect("s", addConnection("s"));
-  gate->connect("e", addConnection("e"));
+  placementGroup->addGate(gate);
 
-  CQBus *ibus = addBus("i", 8);
-  CQBus *obus = addBus("o", 8);
+  gate->connect("s", addPlacementConn("s"));
+  gate->connect("e", addPlacementConn("e"));
+
+  CQBus *ibus = addPlacementBus("i", 8);
+  CQBus *obus = addPlacementBus("o", 8);
+
+  ibus->setGate(gate);
+  obus->setGate(gate);
 
   CQConnection *icon[8];
   CQConnection *ocon[8];
 
-  gate->connect("shift_in" , addConnection("shift_in" ));
-  gate->connect("shift_out", addConnection("shift_out"));
+  gate->connect("shift_in" , addPlacementConn("shift_in" ));
+  gate->connect("shift_out", addPlacementConn("shift_out"));
 
   for (int i = 0; i < 8; ++i) {
-    icon[i] = addConnection(CQRShiftGate::iname(i));
-    ocon[i] = addConnection(CQRShiftGate::oname(i));
+    icon[i] = addPlacementConn(CQRShiftGate::iname(i));
+    ocon[i] = addPlacementConn(CQRShiftGate::oname(i));
 
     gate->connect(CQRShiftGate::iname(i), icon[i]);
     gate->connect(CQRShiftGate::oname(i), ocon[i]);
@@ -716,25 +1255,624 @@ addRShiftGate()
 
 void
 CQSchem::
+addInverterGate()
+{
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
+
+  placementGroup->setExpandName("build_register");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  auto addPlacementBus = [&](const QString &name, int n) {
+    CQBus *bus = addBus(name, n);
+
+    placementGroup->addBus(bus);
+
+    return bus;
+  };
+
+  //---
+
+  CQInverterGate *gate = addGateT<CQInverterGate>("INV");
+
+  placementGroup->addGate(gate);
+
+  CQBus *ibus = addPlacementBus("a", 8);
+  CQBus *obus = addPlacementBus("c", 8);
+
+  ibus->setGate(gate);
+  obus->setGate(gate);
+
+  CQConnection *icon[8];
+  CQConnection *ocon[8];
+
+  for (int i = 0; i < 8; ++i) {
+    icon[i] = addPlacementConn(CQInverterGate::iname(i));
+    ocon[i] = addPlacementConn(CQInverterGate::oname(i));
+
+    gate->connect(CQInverterGate::iname(i), icon[i]);
+    gate->connect(CQInverterGate::oname(i), ocon[i]);
+
+    ibus->addConnection(icon[i], i);
+    obus->addConnection(ocon[i], i);
+  }
+}
+
+void
+CQSchem::
+addAnderGate()
+{
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
+
+  placementGroup->setExpandName("build_ander");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  auto addPlacementBus = [&](const QString &name, int n) {
+    CQBus *bus = addBus(name, n);
+
+    placementGroup->addBus(bus);
+
+    return bus;
+  };
+
+  //---
+
+  CQAnderGate *gate = addGateT<CQAnderGate>("AND");
+
+  placementGroup->addGate(gate);
+
+  CQBus *abus = addPlacementBus("a", 8);
+  CQBus *bbus = addPlacementBus("b", 8);
+  CQBus *cbus = addPlacementBus("c", 8);
+
+  abus->setGate(gate);
+  bbus->setGate(gate);
+  cbus->setGate(gate);
+
+  CQConnection *acon[8];
+  CQConnection *bcon[8];
+  CQConnection *ccon[8];
+
+  for (int i = 0; i < 8; ++i) {
+    acon[i] = addPlacementConn(CQAnderGate::aname(i));
+    bcon[i] = addPlacementConn(CQAnderGate::bname(i));
+    ccon[i] = addPlacementConn(CQAnderGate::cname(i));
+
+    gate->connect(CQAnderGate::aname(i), acon[i]);
+    gate->connect(CQAnderGate::bname(i), bcon[i]);
+    gate->connect(CQAnderGate::cname(i), ccon[i]);
+
+    abus->addConnection(acon[i], i);
+    bbus->addConnection(bcon[i], i);
+    cbus->addConnection(ccon[i], i);
+  }
+}
+
+void
+CQSchem::
+addOrerGate()
+{
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
+
+  placementGroup->setExpandName("build_orer");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  auto addPlacementBus = [&](const QString &name, int n) {
+    CQBus *bus = addBus(name, n);
+
+    placementGroup->addBus(bus);
+
+    return bus;
+  };
+
+  //---
+
+  CQOrerGate *gate = addGateT<CQOrerGate>("AND");
+
+  placementGroup->addGate(gate);
+
+  CQBus *abus = addPlacementBus("a", 8);
+  CQBus *bbus = addPlacementBus("b", 8);
+  CQBus *cbus = addPlacementBus("c", 8);
+
+  abus->setGate(gate);
+  bbus->setGate(gate);
+  cbus->setGate(gate);
+
+  CQConnection *acon[8];
+  CQConnection *bcon[8];
+  CQConnection *ccon[8];
+
+  for (int i = 0; i < 8; ++i) {
+    acon[i] = addPlacementConn(CQOrerGate::aname(i));
+    bcon[i] = addPlacementConn(CQOrerGate::bname(i));
+    ccon[i] = addPlacementConn(CQOrerGate::cname(i));
+
+    gate->connect(CQOrerGate::aname(i), acon[i]);
+    gate->connect(CQOrerGate::bname(i), bcon[i]);
+    gate->connect(CQOrerGate::cname(i), ccon[i]);
+
+    abus->addConnection(acon[i], i);
+    bbus->addConnection(bcon[i], i);
+    cbus->addConnection(ccon[i], i);
+  }
+}
+
+void
+CQSchem::
+addXorerGate()
+{
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
+
+  placementGroup->setExpandName("build_xorer");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  auto addPlacementBus = [&](const QString &name, int n) {
+    CQBus *bus = addBus(name, n);
+
+    placementGroup->addBus(bus);
+
+    return bus;
+  };
+
+  //---
+
+  CQXorerGate *gate = addGateT<CQXorerGate>("AND");
+
+  placementGroup->addGate(gate);
+
+  CQBus *abus = addPlacementBus("a", 8);
+  CQBus *bbus = addPlacementBus("b", 8);
+  CQBus *cbus = addPlacementBus("c", 8);
+
+  abus->setGate(gate);
+  bbus->setGate(gate);
+  cbus->setGate(gate);
+
+  CQConnection *acon[8];
+  CQConnection *bcon[8];
+  CQConnection *ccon[8];
+
+  for (int i = 0; i < 8; ++i) {
+    acon[i] = addPlacementConn(CQXorerGate::aname(i));
+    bcon[i] = addPlacementConn(CQXorerGate::bname(i));
+    ccon[i] = addPlacementConn(CQXorerGate::cname(i));
+
+    gate->connect(CQXorerGate::aname(i), acon[i]);
+    gate->connect(CQXorerGate::bname(i), bcon[i]);
+    gate->connect(CQXorerGate::cname(i), ccon[i]);
+
+    abus->addConnection(acon[i], i);
+    bbus->addConnection(bcon[i], i);
+    cbus->addConnection(ccon[i], i);
+  }
+}
+
+void
+CQSchem::
 addAdderGate()
 {
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
+
+  placementGroup->setExpandName("build_adder");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  //---
+
   CQAdderGate *gate = addGateT<CQAdderGate>("adder");
 
-  gate->connect("a"        , addConnection("a"        ));
-  gate->connect("b"        , addConnection("b"        ));
-  gate->connect("carry_in" , addConnection("carry_in" ));
-  gate->connect("carry_out", addConnection("carry_out"));
-  gate->connect("sum"      , addConnection("sum"      ));
+  placementGroup->addGate(gate);
+
+  gate->connect("a"        , addPlacementConn("a"        ));
+  gate->connect("b"        , addPlacementConn("b"        ));
+  gate->connect("carry_in" , addPlacementConn("carry_in" ));
+  gate->connect("carry_out", addPlacementConn("carry_out"));
+  gate->connect("sum"      , addPlacementConn("sum"      ));
+}
+
+void
+CQSchem::
+addAdder8Gate()
+{
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
+
+  placementGroup->setExpandName("build_adder8");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  auto addPlacementBus = [&](const QString &name, int n) {
+    CQBus *bus = addBus(name, n);
+
+    placementGroup->addBus(bus);
+
+    return bus;
+  };
+
+  //---
+
+  CQAdder8Gate *gate = addGateT<CQAdder8Gate>("ADD");
+
+  placementGroup->addGate(gate);
+
+  CQBus *abus = addPlacementBus("a", 8);
+  CQBus *bbus = addPlacementBus("b", 8);
+  CQBus *cbus = addPlacementBus("c", 8);
+
+  abus->setGate(gate);
+  bbus->setGate(gate);
+  cbus->setGate(gate);
+
+  for (int i = 0; i < 8; ++i) {
+    QString aname = CQAdder8Gate::aname(i);
+    QString bname = CQAdder8Gate::bname(i);
+    QString cname = CQAdder8Gate::cname(i);
+
+    CQConnection *acon = addPlacementConn(aname);
+    CQConnection *bcon = addPlacementConn(bname);
+    CQConnection *ccon = addPlacementConn(cname);
+
+    gate->connect(aname, acon);
+    gate->connect(bname, bcon);
+    gate->connect(cname, ccon);
+
+    abus->addConnection(acon, i);
+    bbus->addConnection(bcon, i);
+    cbus->addConnection(ccon, i);
+  }
+
+  gate->connect("carry_in" , addPlacementConn("carry_in" ));
+  gate->connect("carry_out", addPlacementConn("carry_out"));
+}
+
+void
+CQSchem::
+addComparatorGate()
+{
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
+
+  placementGroup->setExpandName("build_comparator");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  //---
+
+  CQComparatorGate *gate = addGateT<CQComparatorGate>("XOR");
+
+  placementGroup->addGate(gate);
+
+  gate->connect("a"        , addPlacementConn("a"       ));
+  gate->connect("b"        , addPlacementConn("b"       ));
+  gate->connect("c"        , addPlacementConn("c"       ));
+  gate->connect("a_larger" , addPlacementConn("a_larger"));
+  gate->connect("equal"    , addPlacementConn("equal"   ));
+}
+
+void
+CQSchem::
+addComparator8Gate()
+{
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
+
+  placementGroup->setExpandName("build_comparator8");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  auto addPlacementBus = [&](const QString &name, int n) {
+    CQBus *bus = addBus(name, n);
+
+    placementGroup->addBus(bus);
+
+    return bus;
+  };
+
+  //---
+
+  CQComparator8Gate *gate = addGateT<CQComparator8Gate>("XOR");
+
+  placementGroup->addGate(gate);
+
+  CQBus *abus = addPlacementBus("a", 8);
+  CQBus *bbus = addPlacementBus("b", 8);
+  CQBus *cbus = addPlacementBus("c", 8);
+
+  abus->setGate(gate);
+  bbus->setGate(gate);
+  cbus->setGate(gate);
+
+  for (int i = 0; i < 8; ++i) {
+    QString aname = CQComparator8Gate::aname(i);
+    QString bname = CQComparator8Gate::bname(i);
+    QString cname = CQComparator8Gate::cname(i);
+
+    CQConnection *acon = addPlacementConn(aname);
+    CQConnection *bcon = addPlacementConn(bname);
+    CQConnection *ccon = addPlacementConn(cname);
+
+    gate->connect(aname, acon);
+    gate->connect(bname, bcon);
+    gate->connect(cname, ccon);
+
+    abus->addConnection(acon, i);
+    bbus->addConnection(bcon, i);
+    cbus->addConnection(ccon, i);
+  }
+
+  gate->connect("a_larger", addPlacementConn("a_larger"));
+  gate->connect("equal"   , addPlacementConn("equal"   ));
+}
+
+void
+CQSchem::
+addBus0Gate()
+{
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
+
+  placementGroup->setExpandName("build_bus0");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  auto addPlacementBus = [&](const QString &name, int n) {
+    CQBus *bus = addBus(name, n);
+
+    placementGroup->addBus(bus);
+
+    return bus;
+  };
+
+  //---
+
+  CQBus0Gate *gate = addGateT<CQBus0Gate>("Z");
+
+  placementGroup->addGate(gate);
+
+  CQBus *ibus = addPlacementBus("i", 8);
+
+  ibus->setGate(gate);
+
+  for (int i = 0; i < 8; ++i) {
+    CQConnection *icon = addPlacementConn(CQBus0Gate::iname(i));
+
+    gate->connect(CQBus0Gate::iname(i), icon);
+
+    ibus->addConnection(icon, i);
+  }
+
+  gate->connect("zero", addPlacementConn("zero"));
+}
+
+void
+CQSchem::
+addBus1Gate()
+{
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
+
+  placementGroup->setExpandName("build_bus1");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  auto addPlacementBus = [&](const QString &name, int n) {
+    CQBus *bus = addBus(name, n);
+
+    placementGroup->addBus(bus);
+
+    return bus;
+  };
+
+  //---
+
+  CQBus1Gate *gate = addGateT<CQBus1Gate>("BUS1");
+
+  placementGroup->addGate(gate);
+
+  CQBus *ibus = addPlacementBus("i", 8);
+  CQBus *obus = addPlacementBus("o", 8);
+
+  ibus->setGate(gate);
+  obus->setGate(gate);
+
+  for (int i = 0; i < 8; ++i) {
+    CQConnection *icon = addPlacementConn(CQBus1Gate::iname(i));
+    CQConnection *ocon = addPlacementConn(CQBus1Gate::oname(i));
+
+    gate->connect(CQBus1Gate::iname(i), icon);
+    gate->connect(CQBus1Gate::oname(i), ocon);
+
+    ibus->addConnection(icon, i);
+    obus->addConnection(ocon, i);
+  }
+
+  gate->connect("bus1", addPlacementConn("bus1"));
+}
+
+void
+CQSchem::
+addAluGate()
+{
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
+
+  placementGroup->setExpandName("build_alu");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  auto addPlacementBus = [&](const QString &name, int n) {
+    CQBus *bus = addBus(name, n);
+
+    placementGroup->addBus(bus);
+
+    return bus;
+  };
+
+  //---
+
+  CQAluGate *gate = addGateT<CQAluGate>("ALU");
+
+  placementGroup->addGate(gate);
+
+  CQBus *abus = addPlacementBus("a", 8);
+  CQBus *bbus = addPlacementBus("b", 8);
+  CQBus *cbus = addPlacementBus("c", 8);
+
+  abus->setGate(gate);
+  bbus->setGate(gate);
+  cbus->setGate(gate);
+
+  for (int i = 0; i < 8; ++i) {
+    CQConnection *acon = addPlacementConn(CQAluGate::aname(i));
+    CQConnection *bcon = addPlacementConn(CQAluGate::bname(i));
+    CQConnection *ccon = addPlacementConn(CQAluGate::cname(i));
+
+    gate->connect(CQAluGate::aname(i), acon);
+    gate->connect(CQAluGate::bname(i), bcon);
+    gate->connect(CQAluGate::cname(i), ccon);
+
+    abus->addConnection(acon, i);
+    bbus->addConnection(bcon, i);
+    cbus->addConnection(ccon, i);
+  }
+
+  gate->connect("carry_in" , addPlacementConn("carry_in" ));
+  gate->connect("carry_out", addPlacementConn("carry_out"));
+  gate->connect("a_larger" , addPlacementConn("a_larger" ));
+  gate->connect("equal"    , addPlacementConn("equal"    ));
+  gate->connect("zero"     , addPlacementConn("zero"     ));
+
+  for (int i = 0; i < 3; ++i) {
+    QString opname = CQAluGate::opname(i);
+
+    gate->connect(opname, addPlacementConn(opname));
+  }
 }
 
 void
 CQSchem::
 buildNotGate()
 {
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
+
+  placementGroup->setCollapseName("not");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  //---
+
   CQNandGate *gate = addGateT<CQNandGate>();
 
-  CQConnection *in  = addConnection("a");
-  CQConnection *out = addConnection("c");
+  placementGroup->addGate(gate);
+
+  CQConnection *in  = addPlacementConn("a");
+  CQConnection *out = addPlacementConn("c");
 
   gate->connect("a", in );
   gate->connect("b", in );
@@ -745,11 +1883,30 @@ void
 CQSchem::
 buildAndGate()
 {
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
+
+  placementGroup->setCollapseName("and");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  //---
+
   CQNandGate *nandGate = addGateT<CQNandGate>();
 
-  CQConnection *in1  = addConnection("a");
-  CQConnection *in2  = addConnection("b");
-  CQConnection *out1 = addConnection("x");
+  placementGroup->addGate(nandGate);
+
+  CQConnection *in1  = addPlacementConn("a");
+  CQConnection *in2  = addPlacementConn("b");
+  CQConnection *out1 = addPlacementConn("x");
 
   nandGate->connect("a", in1 );
   nandGate->connect("b", in2 );
@@ -757,7 +1914,9 @@ buildAndGate()
 
   CQNotGate *notGate = addGateT<CQNotGate>();
 
-  CQConnection *out2 = addConnection("c");
+  placementGroup->addGate(notGate);
+
+  CQConnection *out2 = addPlacementConn("c");
 
   notGate->connect("a", out1);
   notGate->connect("c", out2);
@@ -770,14 +1929,31 @@ buildAnd3Gate()
   CQPlacementGroup *placementGroup =
     addPlacementGroup(CQPlacementGroup::Placement::GRID, 2, 2);
 
+  placementGroup->setCollapseName("and3");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  //---
+
   CQAndGate *andGate1 = addGateT<CQAndGate>();
   CQAndGate *andGate2 = addGateT<CQAndGate>();
 
-  CQConnection *in1  = addConnection("a");
-  CQConnection *in2  = addConnection("b");
-  CQConnection *in3  = addConnection("c");
-  CQConnection *out1 = addConnection("t");
-  CQConnection *out2 = addConnection("d");
+  placementGroup->addGate(andGate1, 1, 0);
+  placementGroup->addGate(andGate2, 0, 1);
+
+  CQConnection *in1  = addPlacementConn("a");
+  CQConnection *in2  = addPlacementConn("b");
+  CQConnection *in3  = addPlacementConn("c");
+  CQConnection *out1 = addPlacementConn("t");
+  CQConnection *out2 = addPlacementConn("d");
 
   andGate1->connect("a", in1 );
   andGate1->connect("b", in2 );
@@ -786,9 +1962,6 @@ buildAnd3Gate()
   andGate2->connect("a", out1);
   andGate2->connect("b", in3 );
   andGate2->connect("c", out2);
-
-  placementGroup->addGate(andGate1, 1, 0);
-  placementGroup->addGate(andGate2, 0, 1);
 }
 
 void
@@ -798,17 +1971,35 @@ buildAnd4Gate()
   CQPlacementGroup *placementGroup =
     addPlacementGroup(CQPlacementGroup::Placement::GRID, 3, 3);
 
+  placementGroup->setCollapseName("and4");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  //---
+
   CQAndGate *andGate1 = addGateT<CQAndGate>();
   CQAndGate *andGate2 = addGateT<CQAndGate>();
   CQAndGate *andGate3 = addGateT<CQAndGate>();
 
-  CQConnection *in1  = addConnection("a");
-  CQConnection *in2  = addConnection("b");
-  CQConnection *in3  = addConnection("c");
-  CQConnection *in4  = addConnection("d");
-  CQConnection *out1 = addConnection("t1");
-  CQConnection *out2 = addConnection("t2");
-  CQConnection *out3 = addConnection("e");
+  placementGroup->addGate(andGate1, 2, 0);
+  placementGroup->addGate(andGate2, 1, 1);
+  placementGroup->addGate(andGate3, 0, 2);
+
+  CQConnection *in1  = addPlacementConn("a");
+  CQConnection *in2  = addPlacementConn("b");
+  CQConnection *in3  = addPlacementConn("c");
+  CQConnection *in4  = addPlacementConn("d");
+  CQConnection *out1 = addPlacementConn("t1");
+  CQConnection *out2 = addPlacementConn("t2");
+  CQConnection *out3 = addPlacementConn("e");
 
   andGate1->connect("a", in1 );
   andGate1->connect("b", in2 );
@@ -821,10 +2012,6 @@ buildAnd4Gate()
   andGate3->connect("a", out2);
   andGate3->connect("b", in4 );
   andGate3->connect("c", out3);
-
-  placementGroup->addGate(andGate1, 2, 0);
-  placementGroup->addGate(andGate2, 1, 1);
-  placementGroup->addGate(andGate3, 0, 2);
 }
 
 void
@@ -834,66 +2021,47 @@ buildAnd8Gate()
   CQPlacementGroup *placementGroup =
     addPlacementGroup(CQPlacementGroup::Placement::GRID, 7, 7);
 
-  CQAndGate *andGate1 = addGateT<CQAndGate>();
-  CQAndGate *andGate2 = addGateT<CQAndGate>();
-  CQAndGate *andGate3 = addGateT<CQAndGate>();
-  CQAndGate *andGate4 = addGateT<CQAndGate>();
-  CQAndGate *andGate5 = addGateT<CQAndGate>();
-  CQAndGate *andGate6 = addGateT<CQAndGate>();
-  CQAndGate *andGate7 = addGateT<CQAndGate>();
+  placementGroup->setCollapseName("and8");
 
-  CQConnection *in1 = addConnection("a");
-  CQConnection *in2 = addConnection("b");
-  CQConnection *in3 = addConnection("c");
-  CQConnection *in4 = addConnection("d");
-  CQConnection *in5 = addConnection("e");
-  CQConnection *in6 = addConnection("f");
-  CQConnection *in7 = addConnection("g");
-  CQConnection *in8 = addConnection("h");
+  //---
 
-  CQConnection *out1 = addConnection("t1");
-  CQConnection *out2 = addConnection("t2");
-  CQConnection *out3 = addConnection("t3");
-  CQConnection *out4 = addConnection("t4");
-  CQConnection *out5 = addConnection("t5");
-  CQConnection *out6 = addConnection("t6");
-  CQConnection *out7 = addConnection("e");
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
 
-  andGate1->connect("a", in1 );
-  andGate1->connect("b", in2 );
-  andGate1->connect("c", out1);
+    placementGroup->addConnection(conn);
 
-  andGate2->connect("a", out1);
-  andGate2->connect("b", in3 );
-  andGate2->connect("c", out2);
+    return conn;
+  };
 
-  andGate3->connect("a", out2);
-  andGate3->connect("b", in4 );
-  andGate3->connect("c", out3);
+  //---
 
-  andGate4->connect("a", out3);
-  andGate4->connect("b", in5 );
-  andGate4->connect("c", out4);
+  CQAndGate *andGate[7];
 
-  andGate5->connect("a", out4);
-  andGate5->connect("b", in6 );
-  andGate5->connect("c", out5);
+  for (int i = 0; i < 7; ++i) {
+    andGate[i] = addGateT<CQAndGate>();
 
-  andGate6->connect("a", out5);
-  andGate6->connect("b", in7 );
-  andGate6->connect("c", out6);
+    placementGroup->addGate(andGate[i], 6 - i, i);
+  }
 
-  andGate7->connect("a", out6);
-  andGate7->connect("b", in8 );
-  andGate7->connect("c", out7);
+  CQConnection *in[8];
 
-  placementGroup->addGate(andGate1, 6, 0);
-  placementGroup->addGate(andGate2, 5, 1);
-  placementGroup->addGate(andGate3, 4, 2);
-  placementGroup->addGate(andGate4, 3, 3);
-  placementGroup->addGate(andGate5, 2, 4);
-  placementGroup->addGate(andGate6, 1, 5);
-  placementGroup->addGate(andGate7, 0, 6);
+  for (int i = 0; i < 8; ++i)
+    in[i] = addPlacementConn(QString("a%1").arg(i));
+
+  CQConnection *out[7];
+
+  for (int i = 0; i < 7; ++i)
+    out[i] = addPlacementConn(QString("t%1").arg(i));
+
+  for (int i = 0; i < 7; ++i) {
+    if (i == 0)
+      andGate[i]->connect("a", in[i]);
+    else
+      andGate[i]->connect("a", out[i - 1]);
+
+    andGate[i]->connect("b", in [i + 1]);
+    andGate[i]->connect("c", out[i    ]);
+  }
 }
 
 void
@@ -903,15 +2071,33 @@ buildOrGate()
   CQPlacementGroup *placementGroup =
     addPlacementGroup(CQPlacementGroup::Placement::GRID, 2, 2);
 
+  placementGroup->setCollapseName("or");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  //---
+
   CQNotGate  *notGate1 = addGateT<CQNotGate>();
   CQNotGate  *notGate2 = addGateT<CQNotGate>();
   CQNandGate *nandGate = addGateT<CQNandGate>();
 
-  CQConnection *in1 = addConnection("a");
-  CQConnection *in2 = addConnection("b");
-  CQConnection *io1 = addConnection("c");
-  CQConnection *io2 = addConnection("d");
-  CQConnection *out = addConnection("e");
+  placementGroup->addGate(notGate1, 1, 0);
+  placementGroup->addGate(notGate2, 0, 0);
+  placementGroup->addGate(nandGate, 0, 1, 2, 1);
+
+  CQConnection *in1 = addPlacementConn("a");
+  CQConnection *in2 = addPlacementConn("b");
+  CQConnection *io1 = addPlacementConn("c");
+  CQConnection *io2 = addPlacementConn("d");
+  CQConnection *out = addPlacementConn("e");
 
   notGate1->connect("a", in1);
   notGate1->connect("c", io1);
@@ -922,10 +2108,56 @@ buildOrGate()
   nandGate->connect("a", io1);
   nandGate->connect("b", io2);
   nandGate->connect("c", out);
+}
 
-  placementGroup->addGate(notGate1, 1, 0);
-  placementGroup->addGate(notGate2, 0, 0);
-  placementGroup->addGate(nandGate, 0, 1, 2, 1);
+void
+CQSchem::
+buildOr8Gate()
+{
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::GRID, 7, 7);
+
+  placementGroup->setCollapseName("or8");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  //---
+
+  CQOrGate *orGate[7];
+
+  for (int i = 0; i < 7; ++i) {
+    orGate[i] = addGateT<CQOrGate>();
+
+    placementGroup->addGate(orGate[i], 6 - i, i);
+  }
+
+  CQConnection *in[8];
+
+  for (int i = 0; i < 8; ++i)
+    in[i] = addPlacementConn(QString("a%1").arg(i));
+
+  CQConnection *out[7];
+
+  for (int i = 0; i < 7; ++i)
+    out[i] = addPlacementConn(QString("t%1").arg(i));
+
+  for (int i = 0; i < 7; ++i) {
+    if (i == 0)
+      orGate[i]->connect("a", in [i]);
+    else
+      orGate[i]->connect("a", out[i - 1]);
+
+    orGate[i]->connect("b", in [i + 1]);
+    orGate[i]->connect("c", out[i    ]);
+  }
 }
 
 void
@@ -935,19 +2167,39 @@ buildXorGate()
   CQPlacementGroup *placementGroup =
     addPlacementGroup(CQPlacementGroup::Placement::GRID, 3, 3);
 
+  placementGroup->setCollapseName("xor");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  //---
+
   CQNotGate  *notGate1  = addGateT<CQNotGate >("not1");
   CQNotGate  *notGate2  = addGateT<CQNotGate >("not2");
   CQNandGate *nandGate1 = addGateT<CQNandGate>("nand1");
   CQNandGate *nandGate2 = addGateT<CQNandGate>("nand2");
   CQNandGate *nandGate3 = addGateT<CQNandGate>("nand3");
 
-  CQConnection *acon = addConnection("a");
-  CQConnection *bcon = addConnection("b");
-  CQConnection *ccon = addConnection("c");
-  CQConnection *dcon = addConnection("d");
-  CQConnection *econ = addConnection("e");
-  CQConnection *fcon = addConnection("f");
-  CQConnection *gcon = addConnection("g");
+  placementGroup->addGate(notGate1 , 1, 0);
+  placementGroup->addGate(notGate2 , 0, 0);
+  placementGroup->addGate(nandGate1, 1, 1);
+  placementGroup->addGate(nandGate2, 0, 1);
+  placementGroup->addGate(nandGate3, 0, 2, 2, 1);
+
+  CQConnection *acon = addPlacementConn("a");
+  CQConnection *bcon = addPlacementConn("b");
+  CQConnection *ccon = addPlacementConn("c");
+  CQConnection *dcon = addPlacementConn("d");
+  CQConnection *econ = addPlacementConn("e");
+  CQConnection *fcon = addPlacementConn("f");
+  CQConnection *gcon = addPlacementConn("g");
 
   notGate1->connect("a", acon);
   notGate1->connect("c", ccon);
@@ -966,12 +2218,6 @@ buildXorGate()
   nandGate3->connect("a", econ);
   nandGate3->connect("b", fcon);
   nandGate3->connect("c", gcon);
-
-  placementGroup->addGate(notGate1 , 1, 0);
-  placementGroup->addGate(notGate2 , 0, 0);
-  placementGroup->addGate(nandGate1, 1, 1);
-  placementGroup->addGate(nandGate2, 0, 1);
-  placementGroup->addGate(nandGate3, 0, 2, 2, 1);
 }
 
 void
@@ -981,17 +2227,36 @@ buildMemoryGate()
   CQPlacementGroup *placementGroup =
     addPlacementGroup(CQPlacementGroup::Placement::GRID, 2, 3);
 
+  placementGroup->setCollapseName("memory");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  //---
+
   CQNandGate *nandGate1 = addGateT<CQNandGate>("1");
   CQNandGate *nandGate2 = addGateT<CQNandGate>("2");
   CQNandGate *nandGate3 = addGateT<CQNandGate>("3");
   CQNandGate *nandGate4 = addGateT<CQNandGate>("4");
 
-  CQConnection *coni = addConnection("i");
-  CQConnection *cons = addConnection("s");
-  CQConnection *cona = addConnection("a");
-  CQConnection *conb = addConnection("b");
-  CQConnection *conc = addConnection("c");
-  CQConnection *cono = addConnection("o");
+  placementGroup->addGate(nandGate1, 1, 0);
+  placementGroup->addGate(nandGate2, 0, 1);
+  placementGroup->addGate(nandGate3, 1, 2);
+  placementGroup->addGate(nandGate4, 0, 2);
+
+  CQConnection *coni = addPlacementConn("i");
+  CQConnection *cons = addPlacementConn("s");
+  CQConnection *cona = addPlacementConn("a");
+  CQConnection *conb = addPlacementConn("b");
+  CQConnection *conc = addPlacementConn("c");
+  CQConnection *cono = addPlacementConn("o");
 
   nandGate1->connect("a", coni);
   nandGate1->connect("b", cons);
@@ -1008,25 +2273,41 @@ buildMemoryGate()
   nandGate4->connect("a", cono);
   nandGate4->connect("b", conb);
   nandGate4->connect("c", conc);
-
-  placementGroup->addGate(nandGate1, 1, 0);
-  placementGroup->addGate(nandGate2, 0, 1);
-  placementGroup->addGate(nandGate3, 1, 2);
-  placementGroup->addGate(nandGate4, 0, 2);
 }
 
 void
 CQSchem::
 buildMemory8Gate()
 {
-  CQPlacementGroup *placementGroup = addPlacementGroup(CQPlacementGroup::Placement::VERTICAL);
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::VERTICAL);
+
+  placementGroup->setCollapseName("memory8");
 
   //---
 
-  CQBus *ibus = addBus("i", 8);
-  CQBus *obus = addBus("o", 8);
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
 
-  CQConnection *cons = addConnection("s");
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  auto addPlacementBus = [&](const QString &name, int n) {
+    CQBus *bus = addBus(name, n);
+
+    placementGroup->addBus(bus);
+
+    return bus;
+  };
+
+  //---
+
+  CQBus *ibus = addPlacementBus("i", 8);
+  CQBus *obus = addPlacementBus("o", 8);
+
+  CQConnection *cons = addPlacementConn("s");
 
   CQMemoryGate *mem[8];
 
@@ -1040,8 +2321,8 @@ buildMemory8Gate()
     QString iname = QString("i%1").arg(i);
     QString oname = QString("o%1").arg(i);
 
-    CQConnection *coni = addConnection(iname);
-    CQConnection *cono = addConnection(oname);
+    CQConnection *coni = addPlacementConn(iname);
+    CQConnection *cono = addPlacementConn(oname);
 
     mem[i]->connect("i", coni);
     mem[i]->connect("o", cono);
@@ -1059,14 +2340,35 @@ void
 CQSchem::
 buildEnablerGate()
 {
-  CQPlacementGroup *placementGroup = addPlacementGroup(CQPlacementGroup::Placement::VERTICAL);
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::VERTICAL);
+
+  placementGroup->setCollapseName("enabler");
 
   //---
 
-  CQBus *ibus = addBus("i", 8);
-  CQBus *obus = addBus("o", 8);
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
 
-  CQConnection *cone = addConnection("e");
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  auto addPlacementBus = [&](const QString &name, int n) {
+    CQBus *bus = addBus(name, n);
+
+    placementGroup->addBus(bus);
+
+    return bus;
+  };
+
+  //---
+
+  CQBus *ibus = addPlacementBus("i", 8);
+  CQBus *obus = addPlacementBus("o", 8);
+
+  CQConnection *cone = addPlacementConn("e");
 
   CQAndGate *gate[8];
 
@@ -1078,8 +2380,8 @@ buildEnablerGate()
     QString iname = QString("i%1").arg(i);
     QString oname = QString("o%1").arg(i);
 
-    CQConnection *coni = addConnection(iname);
-    CQConnection *cono = addConnection(oname);
+    CQConnection *coni = addPlacementConn(iname);
+    CQConnection *cono = addPlacementConn(oname);
 
     gate[i]->connect("a", coni);
     gate[i]->connect("b", cone);
@@ -1097,22 +2399,46 @@ void
 CQSchem::
 buildRegisterGate()
 {
-  CQPlacementGroup *placementGroup = addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
+
+  placementGroup->setCollapseName("register");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  auto addPlacementBus = [&](const QString &name, int n) {
+    CQBus *bus = addBus(name, n);
+
+    placementGroup->addBus(bus);
+
+    return bus;
+  };
 
   //---
 
   CQMemory8Gate *mem = addGateT<CQMemory8Gate>("B");
   CQEnablerGate *ena = addGateT<CQEnablerGate>("E");
 
-  CQConnection *cons = addConnection("s");
-  CQConnection *cone = addConnection("e");
+  placementGroup->addGate(mem);
+  placementGroup->addGate(ena);
+
+  CQConnection *cons = addPlacementConn("s");
+  CQConnection *cone = addPlacementConn("e");
 
   mem->connect("s", cons);
   ena->connect("e", cone);
 
-  CQBus *ibus  = addBus( "i", 8);
-  CQBus *iobus = addBus("io", 8);
-  CQBus *obus  = addBus( "o", 8);
+  CQBus *ibus  = addPlacementBus( "i", 8);
+  CQBus *iobus = addPlacementBus("io", 8);
+  CQBus *obus  = addPlacementBus( "o", 8);
 
   for (int i = 0; i < 8; ++i) {
     QString ioname = QString("io%1").arg(i);
@@ -1120,9 +2446,9 @@ buildRegisterGate()
     QString iname = CQMemory8Gate::iname(i);
     QString oname = CQMemory8Gate::oname(i);
 
-    CQConnection *icon  = addConnection(iname);
-    CQConnection *iocon = addConnection(ioname);
-    CQConnection *ocon  = addConnection(oname);
+    CQConnection *icon  = addPlacementConn(iname);
+    CQConnection *iocon = addPlacementConn(ioname);
+    CQConnection *ocon  = addPlacementConn(oname);
 
     mem->connect(iname, icon);
     mem->connect(oname, iocon);
@@ -1134,9 +2460,6 @@ buildRegisterGate()
     iobus->addConnection(iocon, i);
     obus ->addConnection(ocon , i);
   }
-
-  placementGroup->addGate(mem);
-  placementGroup->addGate(ena);
 }
 
 void
@@ -1146,13 +2469,25 @@ buildDecoder4Gate()
   CQPlacementGroup *placementGroup =
     addPlacementGroup(CQPlacementGroup::Placement::GRID, 5, 3);
 
+  placementGroup->setCollapseName("decoder4");
+
   //---
 
-  CQConnection *cona = addConnection("a");
-  CQConnection *conb = addConnection("b");
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
 
-  CQConnection *conna = addConnection("na");
-  CQConnection *connb = addConnection("nb");
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  //---
+
+  CQConnection *cona = addPlacementConn("a");
+  CQConnection *conb = addPlacementConn("b");
+
+  CQConnection *conna = addPlacementConn("na");
+  CQConnection *connb = addPlacementConn("nb");
 
   CQNotGate *notgate[2];
 
@@ -1183,7 +2518,7 @@ buildDecoder4Gate()
 
     QString oname = CQDecoder4Gate::oname(i);
 
-    CQConnection *out = addConnection(oname);
+    CQConnection *out = addPlacementConn(oname);
 
     andgate[i]->connect("c", out);
   }
@@ -1204,15 +2539,27 @@ buildDecoder8Gate()
   CQPlacementGroup *placementGroup =
     addPlacementGroup(CQPlacementGroup::Placement::GRID, 10, 4);
 
+  placementGroup->setCollapseName("decoder8");
+
   //---
 
-  CQConnection *cona = addConnection("a");
-  CQConnection *conb = addConnection("b");
-  CQConnection *conc = addConnection("c");
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
 
-  CQConnection *conna = addConnection("na");
-  CQConnection *connb = addConnection("nb");
-  CQConnection *connc = addConnection("nc");
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  //---
+
+  CQConnection *cona = addPlacementConn("a");
+  CQConnection *conb = addPlacementConn("b");
+  CQConnection *conc = addPlacementConn("c");
+
+  CQConnection *conna = addPlacementConn("na");
+  CQConnection *connb = addPlacementConn("nb");
+  CQConnection *connc = addPlacementConn("nc");
 
   CQNotGate *notgate[3];
 
@@ -1247,7 +2594,7 @@ buildDecoder8Gate()
 
     QString oname = CQDecoder8Gate::oname(i);
 
-    CQConnection *out = addConnection(oname);
+    CQConnection *out = addPlacementConn(oname);
 
     andgate[i]->connect("d", out);
   }
@@ -1268,17 +2615,29 @@ buildDecoder16Gate()
   CQPlacementGroup *placementGroup =
     addPlacementGroup(CQPlacementGroup::Placement::GRID, 18, 5);
 
+  placementGroup->setCollapseName("decoder16");
+
   //---
 
-  CQConnection *cona = addConnection("a");
-  CQConnection *conb = addConnection("b");
-  CQConnection *conc = addConnection("c");
-  CQConnection *cond = addConnection("d");
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
 
-  CQConnection *conna = addConnection("na");
-  CQConnection *connb = addConnection("nb");
-  CQConnection *connc = addConnection("nc");
-  CQConnection *connd = addConnection("nd");
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  //---
+
+  CQConnection *cona = addPlacementConn("a");
+  CQConnection *conb = addPlacementConn("b");
+  CQConnection *conc = addPlacementConn("c");
+  CQConnection *cond = addPlacementConn("d");
+
+  CQConnection *conna = addPlacementConn("na");
+  CQConnection *connb = addPlacementConn("nb");
+  CQConnection *connc = addPlacementConn("nc");
+  CQConnection *connd = addPlacementConn("nd");
 
   CQNotGate *notgate[4];
 
@@ -1317,7 +2676,7 @@ buildDecoder16Gate()
 
     QString outname = CQDecoder16Gate::oname(i);
 
-    CQConnection *out = addConnection(outname);
+    CQConnection *out = addPlacementConn(outname);
 
     andgate[i]->connect("e", out);
   }
@@ -1338,25 +2697,37 @@ buildDecoder256Gate()
   CQPlacementGroup *placementGroup =
     addPlacementGroup(CQPlacementGroup::Placement::GRID, 259, 9);
 
+  placementGroup->setCollapseName("decoder256");
+
   //---
 
-  CQConnection *cona = addConnection("a");
-  CQConnection *conb = addConnection("b");
-  CQConnection *conc = addConnection("c");
-  CQConnection *cond = addConnection("d");
-  CQConnection *cone = addConnection("e");
-  CQConnection *conf = addConnection("f");
-  CQConnection *cong = addConnection("g");
-  CQConnection *conh = addConnection("h");
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
 
-  CQConnection *conna = addConnection("na");
-  CQConnection *connb = addConnection("nb");
-  CQConnection *connc = addConnection("nc");
-  CQConnection *connd = addConnection("nd");
-  CQConnection *conne = addConnection("ne");
-  CQConnection *connf = addConnection("nf");
-  CQConnection *conng = addConnection("ng");
-  CQConnection *connh = addConnection("nh");
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  //---
+
+  CQConnection *cona = addPlacementConn("a");
+  CQConnection *conb = addPlacementConn("b");
+  CQConnection *conc = addPlacementConn("c");
+  CQConnection *cond = addPlacementConn("d");
+  CQConnection *cone = addPlacementConn("e");
+  CQConnection *conf = addPlacementConn("f");
+  CQConnection *cong = addPlacementConn("g");
+  CQConnection *conh = addPlacementConn("h");
+
+  CQConnection *conna = addPlacementConn("na");
+  CQConnection *connb = addPlacementConn("nb");
+  CQConnection *connc = addPlacementConn("nc");
+  CQConnection *connd = addPlacementConn("nd");
+  CQConnection *conne = addPlacementConn("ne");
+  CQConnection *connf = addPlacementConn("nf");
+  CQConnection *conng = addPlacementConn("ng");
+  CQConnection *connh = addPlacementConn("nh");
 
   CQNotGate *notgate[8];
 
@@ -1411,7 +2782,7 @@ buildDecoder256Gate()
 
     QString outname = CQDecoder256Gate::oname(i);
 
-    CQConnection *out = addConnection(outname);
+    CQConnection *out = addPlacementConn(outname);
 
     andgate[i]->connect("i", out);
   }
@@ -1429,23 +2800,43 @@ void
 CQSchem::
 buildLShift()
 {
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
+
+  placementGroup->setCollapseName("lshift");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  //---
+
   CQRegisterGate *gate1 = addGateT<CQRegisterGate>("R1");
   CQRegisterGate *gate2 = addGateT<CQRegisterGate>("R2");
 
+  placementGroup->addGate(gate1);
+  placementGroup->addGate(gate2);
+
   CQConnection *iocon[9];
 
-  iocon[0] = addConnection("shift_out");
-  iocon[8] = addConnection("shift_in");
+  iocon[0] = addPlacementConn("shift_out");
+  iocon[8] = addPlacementConn("shift_in");
 
   for (int i = 1; i <= 7; ++i)
-    iocon[i] = addConnection(QString("io%1").arg(i));
+    iocon[i] = addPlacementConn(QString("io%1").arg(i));
 
   for (int i = 0; i < 8; ++i) {
     QString iname = CQRegisterGate::iname(i);
     QString oname = CQRegisterGate::oname(i);
 
-    CQConnection *icon1 = addConnection(iname);
-    CQConnection *ocon2 = addConnection(oname);
+    CQConnection *icon1 = addPlacementConn(iname);
+    CQConnection *ocon2 = addPlacementConn(oname);
 
     gate1->connect(iname, icon1);
     gate1->connect(oname, iocon[i]);
@@ -1456,34 +2847,54 @@ buildLShift()
 
   //---
 
-  gate1->connect("s", addConnection("s1"));
-  gate1->connect("e", addConnection("e1"));
+  gate1->connect("s", addPlacementConn("s1"));
+  gate1->connect("e", addPlacementConn("e1"));
 
-  gate2->connect("s", addConnection("s2"));
-  gate2->connect("e", addConnection("e2"));
+  gate2->connect("s", addPlacementConn("s2"));
+  gate2->connect("e", addPlacementConn("e2"));
 }
 
 void
 CQSchem::
 buildRShift()
 {
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
+
+  placementGroup->setCollapseName("rshift");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  //---
+
   CQRegisterGate *gate1 = addGateT<CQRegisterGate>("R1");
   CQRegisterGate *gate2 = addGateT<CQRegisterGate>("R2");
 
+  placementGroup->addGate(gate1);
+  placementGroup->addGate(gate2);
+
   CQConnection *iocon[9];
 
-  iocon[0] = addConnection("shift_out");
-  iocon[8] = addConnection("shift_in");
+  iocon[0] = addPlacementConn("shift_out");
+  iocon[8] = addPlacementConn("shift_in");
 
   for (int i = 0; i < 7; ++i)
-    iocon[i + 1] = addConnection(QString("io%1").arg(i));
+    iocon[i + 1] = addPlacementConn(QString("io%1").arg(i));
 
   for (int i = 0; i < 8; ++i) {
     QString iname = CQRegisterGate::iname(i);
     QString oname = CQRegisterGate::oname(i);
 
-    CQConnection *icon1 = addConnection(iname);
-    CQConnection *ocon2 = addConnection(oname);
+    CQConnection *icon1 = addPlacementConn(iname);
+    CQConnection *ocon2 = addPlacementConn(oname);
 
     gate1->connect(iname, icon1);
     gate1->connect(oname, iocon[i]);
@@ -1494,11 +2905,11 @@ buildRShift()
 
   //---
 
-  gate1->connect("s", addConnection("s1"));
-  gate1->connect("e", addConnection("e1"));
+  gate1->connect("s", addPlacementConn("s1"));
+  gate1->connect("e", addPlacementConn("e1"));
 
-  gate2->connect("s", addConnection("s2"));
-  gate2->connect("e", addConnection("e2"));
+  gate2->connect("s", addPlacementConn("s2"));
+  gate2->connect("e", addPlacementConn("e2"));
 }
 
 void
@@ -1507,30 +2918,53 @@ buildInverter()
 {
   CQPlacementGroup *placementGroup = addPlacementGroup(CQPlacementGroup::Placement::VERTICAL);
 
+  placementGroup->setCollapseName("inverter");
+
   //---
 
-  CQBus *ibus = addBus("i", 8);
-  CQBus *obus = addBus("o", 8);
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  auto addPlacementBus = [&](const QString &name, int n) {
+    CQBus *bus = addBus(name, n);
+
+    placementGroup->addBus(bus);
+
+    return bus;
+  };
+
+  //---
+
+  CQBus *ibus = addPlacementBus("a", 8);
+  CQBus *obus = addPlacementBus("c", 8);
+
+  CQNotGate *gates[8];
 
   for (int i = 0; i < 8; ++i) {
     QString name = QString("not%1").arg(i);
 
-    CQNotGate *gate = addGateT<CQNotGate>(name);
+    gates[i] = addGateT<CQNotGate>(name);
 
     QString iname = QString("a%1").arg(i);
     QString oname = QString("c%1").arg(i);
 
-    CQConnection *icon = addConnection(iname);
-    CQConnection *ocon = addConnection(oname);
+    CQConnection *icon = addPlacementConn(iname);
+    CQConnection *ocon = addPlacementConn(oname);
 
-    gate->connect("a", icon);
-    gate->connect("c", ocon);
+    gates[i]->connect("a", icon);
+    gates[i]->connect("c", ocon);
 
     ibus->addConnection(icon, i);
     obus->addConnection(ocon, i);
-
-    placementGroup->addGate(gate);
   }
+
+  for (int i = 0; i < 8; ++i)
+    placementGroup->addGate(gates[7 - i]);
 }
 
 void
@@ -1539,35 +2973,58 @@ buildAnder()
 {
   CQPlacementGroup *placementGroup = addPlacementGroup(CQPlacementGroup::Placement::VERTICAL);
 
+  placementGroup->setCollapseName("ander");
+
   //---
 
-  CQBus *ibus1 = addBus("i1", 8);
-  CQBus *ibus2 = addBus("i2", 8);
-  CQBus *obus  = addBus("o" , 8);
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  auto addPlacementBus = [&](const QString &name, int n) {
+    CQBus *bus = addBus(name, n);
+
+    placementGroup->addBus(bus);
+
+    return bus;
+  };
+
+  //---
+
+  CQBus *abus = addPlacementBus("a", 8); abus->setPosition(CQBus::Position::START,  0.25);
+  CQBus *bbus = addPlacementBus("b", 8); bbus->setPosition(CQBus::Position::END  , -0.25);
+  CQBus *cbus = addPlacementBus("c", 8);
+
+  CQAndGate *gates[8];
 
   for (int i = 0; i < 8; ++i) {
     QString name = QString("and%1").arg(i);
 
-    CQAndGate *gate = addGateT<CQAndGate>(name);
+    gates[i] = addGateT<CQAndGate>(name);
 
-    QString iname1 = QString("a%1").arg(i);
-    QString iname2 = QString("b%1").arg(i);
-    QString oname  = QString("c%1").arg(i);
+    QString aname = QString("a%1").arg(i);
+    QString bname = QString("b%1").arg(i);
+    QString cname = QString("c%1").arg(i);
 
-    CQConnection *icon1 = addConnection(iname1);
-    CQConnection *icon2 = addConnection(iname2);
-    CQConnection *ocon  = addConnection(oname);
+    CQConnection *acon = addPlacementConn(aname);
+    CQConnection *bcon = addPlacementConn(bname);
+    CQConnection *ccon = addPlacementConn(cname);
 
-    gate->connect("a", icon1);
-    gate->connect("b", icon2);
-    gate->connect("c", ocon );
+    gates[i]->connect("a", acon);
+    gates[i]->connect("b", bcon);
+    gates[i]->connect("c", ccon);
 
-    ibus1->addConnection(icon1, i);
-    ibus2->addConnection(icon2, i);
-    obus ->addConnection(ocon , i);
-
-    placementGroup->addGate(gate);
+    abus->addConnection(acon, i);
+    bbus->addConnection(bcon, i);
+    cbus->addConnection(ccon, i);
   }
+
+  for (int i = 0; i < 8; ++i)
+    placementGroup->addGate(gates[7 - i]);
 }
 
 void
@@ -1576,35 +3033,58 @@ buildOrer()
 {
   CQPlacementGroup *placementGroup = addPlacementGroup(CQPlacementGroup::Placement::VERTICAL);
 
+  placementGroup->setCollapseName("orer");
+
   //---
 
-  CQBus *ibus1 = addBus("i1", 8);
-  CQBus *ibus2 = addBus("i2", 8);
-  CQBus *obus  = addBus("o" , 8);
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  auto addPlacementBus = [&](const QString &name, int n) {
+    CQBus *bus = addBus(name, n);
+
+    placementGroup->addBus(bus);
+
+    return bus;
+  };
+
+  //---
+
+  CQBus *ibus1 = addPlacementBus("i1", 8); ibus1->setPosition(CQBus::Position::START,  0.25);
+  CQBus *ibus2 = addPlacementBus("i2", 8); ibus2->setPosition(CQBus::Position::END  , -0.25);
+  CQBus *obus  = addPlacementBus("o" , 8);
+
+  CQOrGate *gates[8];
 
   for (int i = 0; i < 8; ++i) {
     QString name = QString("or%1").arg(i);
 
-    CQOrGate *gate = addGateT<CQOrGate>(name);
+    gates[i] = addGateT<CQOrGate>(name);
 
     QString iname1 = QString("a%1").arg(i);
     QString iname2 = QString("b%1").arg(i);
     QString oname  = QString("c%1").arg(i);
 
-    CQConnection *icon1 = addConnection(iname1);
-    CQConnection *icon2 = addConnection(iname2);
-    CQConnection *ocon  = addConnection(oname);
+    CQConnection *icon1 = addPlacementConn(iname1);
+    CQConnection *icon2 = addPlacementConn(iname2);
+    CQConnection *ocon  = addPlacementConn(oname);
 
-    gate->connect("a", icon1);
-    gate->connect("b", icon2);
-    gate->connect("c", ocon );
+    gates[i]->connect("a", icon1);
+    gates[i]->connect("b", icon2);
+    gates[i]->connect("c", ocon );
 
     ibus1->addConnection(icon1, i);
     ibus2->addConnection(icon2, i);
     obus ->addConnection(ocon , i);
-
-    placementGroup->addGate(gate);
   }
+
+  for (int i = 0; i < 8; ++i)
+    placementGroup->addGate(gates[7 - i]);
 }
 
 void
@@ -1613,35 +3093,58 @@ buildXorer()
 {
   CQPlacementGroup *placementGroup = addPlacementGroup(CQPlacementGroup::Placement::VERTICAL);
 
+  placementGroup->setCollapseName("xorer");
+
   //---
 
-  CQBus *ibus1 = addBus("i1", 8);
-  CQBus *ibus2 = addBus("i2", 8);
-  CQBus *obus  = addBus("o" , 8);
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  auto addPlacementBus = [&](const QString &name, int n) {
+    CQBus *bus = addBus(name, n);
+
+    placementGroup->addBus(bus);
+
+    return bus;
+  };
+
+  //---
+
+  CQBus *ibus1 = addPlacementBus("i1", 8); ibus1->setPosition(CQBus::Position::START,  0.25);
+  CQBus *ibus2 = addPlacementBus("i2", 8); ibus2->setPosition(CQBus::Position::END  , -0.25);
+  CQBus *obus  = addPlacementBus("o" , 8);
+
+  CQXorGate *gates[8];
 
   for (int i = 0; i < 8; ++i) {
     QString name = QString("xor%1").arg(i);
 
-    CQXorGate *gate = addGateT<CQXorGate>(name);
+    gates[i] = addGateT<CQXorGate>(name);
 
     QString iname1 = QString("a%1").arg(i);
     QString iname2 = QString("b%1").arg(i);
     QString oname  = QString("c%1").arg(i);
 
-    CQConnection *icon1 = addConnection(iname1);
-    CQConnection *icon2 = addConnection(iname2);
-    CQConnection *ocon  = addConnection(oname);
+    CQConnection *icon1 = addPlacementConn(iname1);
+    CQConnection *icon2 = addPlacementConn(iname2);
+    CQConnection *ocon  = addPlacementConn(oname);
 
-    gate->connect("a", icon1);
-    gate->connect("b", icon2);
-    gate->connect("c", ocon );
+    gates[i]->connect("a", icon1);
+    gates[i]->connect("b", icon2);
+    gates[i]->connect("c", ocon );
 
     ibus1->addConnection(icon1, i);
     ibus2->addConnection(icon2, i);
     obus ->addConnection(ocon , i);
-
-    placementGroup->addGate(gate);
   }
+
+  for (int i = 0; i < 8; ++i)
+    placementGroup->addGate(gates[7 - i]);
 }
 
 void
@@ -1651,6 +3154,18 @@ buildAdder()
   CQPlacementGroup *placementGroup =
     addPlacementGroup(CQPlacementGroup::Placement::GRID, 3, 3);
 
+  placementGroup->setCollapseName("adder");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
   //---
 
   CQXorGate *xorGate1 = addGateT<CQXorGate>("xor1");
@@ -1659,15 +3174,21 @@ buildAdder()
   CQAndGate *andGate2 = addGateT<CQAndGate>("and2");
   CQOrGate  *orGate   = addGateT<CQOrGate >("or"  );
 
-  CQConnection *acon  = addConnection("a");
-  CQConnection *bcon  = addConnection("b");
-  CQConnection *cconi = addConnection("carry_in");
-  CQConnection *scon  = addConnection("sum");
-  CQConnection *ccono = addConnection("carry_out");
+  placementGroup->addGate(xorGate1, 2, 0);
+  placementGroup->addGate(xorGate2, 2, 2);
+  placementGroup->addGate(andGate1, 1, 1);
+  placementGroup->addGate(andGate2, 0, 1);
+  placementGroup->addGate(orGate  , 0, 2, 2, 1);
 
-  CQConnection *scon1 = addConnection("");
-  CQConnection *ccon1 = addConnection("");
-  CQConnection *ccon2 = addConnection("");
+  CQConnection *acon  = addPlacementConn("a");
+  CQConnection *bcon  = addPlacementConn("b");
+  CQConnection *cconi = addPlacementConn("carry_in");
+  CQConnection *scon  = addPlacementConn("sum");
+  CQConnection *ccono = addPlacementConn("carry_out");
+
+  CQConnection *scon1 = addPlacementConn("");
+  CQConnection *ccon1 = addPlacementConn("");
+  CQConnection *ccon2 = addPlacementConn("");
 
   xorGate1->connect("a", acon);
   xorGate1->connect("b", bcon);
@@ -1688,12 +3209,6 @@ buildAdder()
   orGate->connect("a", ccon1);
   orGate->connect("b", ccon2);
   orGate->connect("c", ccono);
-
-  placementGroup->addGate(xorGate1, 2, 0);
-  placementGroup->addGate(xorGate2, 2, 2);
-  placementGroup->addGate(andGate1, 1, 1);
-  placementGroup->addGate(andGate2, 0, 1);
-  placementGroup->addGate(orGate  , 0, 2, 2, 1);
 }
 
 void
@@ -1702,11 +3217,31 @@ buildAdder8()
 {
   CQPlacementGroup *placementGroup = addPlacementGroup(CQPlacementGroup::Placement::VERTICAL);
 
+  placementGroup->setCollapseName("adder8");
+
   //---
 
-  CQBus *ibus = addBus("i"  , 8); ibus->setPosition(CQBus::Position::START);
-  CQBus *obus = addBus("o"  , 8); obus->setPosition(CQBus::Position::END);
-  CQBus *sbus = addBus("sum", 8);
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  auto addPlacementBus = [&](const QString &name, int n) {
+    CQBus *bus = addBus(name, n);
+
+    placementGroup->addBus(bus);
+
+    return bus;
+  };
+
+  //---
+
+  CQBus *abus = addPlacementBus("i"  , 8); abus->setPosition(CQBus::Position::START,  0.25);
+  CQBus *bbus = addPlacementBus("o"  , 8); bbus->setPosition(CQBus::Position::END  , -0.25);
+  CQBus *sbus = addPlacementBus("sum", 8);
 
   CQAdderGate  *adders[8];
   CQConnection *acon  [8];
@@ -1719,17 +3254,17 @@ buildAdder8()
   for (int i = 0; i < 8; ++i) {
     adders[i] = addGateT<CQAdderGate>(QString("adder%1").arg(i));
 
-    acon[i] = addConnection(QString("a%1").arg(i));
-    bcon[i] = addConnection(QString("b%1").arg(i));
-    scon[i] = addConnection(QString("sum%1").arg(i));
+    acon[i] = addPlacementConn(QString("a%1"  ).arg(i));
+    bcon[i] = addPlacementConn(QString("b%1"  ).arg(i));
+    scon[i] = addPlacementConn(QString("sum%1").arg(i));
 
     adders[i]->connect("a", acon[i]);
     adders[i]->connect("b", bcon[i]);
 
-    if (i == 0)
-      cicon = addConnection("carry_in");
+    if (! cicon)
+      cicon = addPlacementConn("carry_in");
 
-    cocon = addConnection("carry_out");
+    cocon = addPlacementConn("carry_out");
 
     adders[i]->connect("carry_in" , cicon);
     adders[i]->connect("carry_out", cocon);
@@ -1738,8 +3273,8 @@ buildAdder8()
 
     adders[i]->connect("sum", scon[i]);
 
-    ibus->addConnection(acon[i], i);
-    obus->addConnection(bcon[i], i);
+    abus->addConnection(acon[i], i);
+    bbus->addConnection(bcon[i], i);
     sbus->addConnection(scon[i], i);
   }
 
@@ -1754,6 +3289,18 @@ buildComparator()
   CQPlacementGroup *placementGroup =
     addPlacementGroup(CQPlacementGroup::Placement::GRID, 4, 5);
 
+  placementGroup->setCollapseName("comparator");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
   //---
 
   CQXorGate  *xorGate1 = addGateT<CQXorGate >("xor1");
@@ -1762,18 +3309,24 @@ buildComparator()
   CQAnd3Gate *andGate4 = addGateT<CQAnd3Gate>("and4");
   CQOrGate   *orGate5  = addGateT<CQOrGate  >("or5" );
 
-  CQConnection *acon = addConnection("a");
-  CQConnection *bcon = addConnection("b");
-  CQConnection *ccon = addConnection("c");
+  placementGroup->addGate(xorGate1, 2, 0);
+  placementGroup->addGate(notGate2, 1, 1);
+  placementGroup->addGate(andGate3, 0, 2);
+  placementGroup->addGate(andGate4, 3, 3);
+  placementGroup->addGate(orGate5 , 0, 4);
 
-  CQConnection *equalCon     = addConnection("equal");
-  CQConnection *iallEqualCon = addConnection("i_all_equal");
-  CQConnection *oallEqualCon = addConnection("o_all_equal");
+  CQConnection *acon = addPlacementConn("a");
+  CQConnection *bcon = addPlacementConn("b");
+  CQConnection *ccon = addPlacementConn("c");
 
-  CQConnection *dcon = addConnection("d");
+  CQConnection *equalCon     = addPlacementConn("equal");
+  CQConnection *iallEqualCon = addPlacementConn("i_all_equal");
+  CQConnection *oallEqualCon = addPlacementConn("o_all_equal");
 
-  CQConnection *iaLargerCon = addConnection("i_a_larger");
-  CQConnection *oaLargerCon = addConnection("o_a_larger");
+  CQConnection *dcon = addPlacementConn("d");
+
+  CQConnection *iaLargerCon = addPlacementConn("i_a_larger");
+  CQConnection *oaLargerCon = addPlacementConn("o_a_larger");
 
   xorGate1->connect("a", acon);
   xorGate1->connect("b", bcon);
@@ -1797,12 +3350,6 @@ buildComparator()
 
   andGate3->setOrientation(CQGate::Orientation::R90);
   orGate5 ->setOrientation(CQGate::Orientation::R90);
-
-  placementGroup->addGate(xorGate1, 2, 0);
-  placementGroup->addGate(notGate2, 1, 1);
-  placementGroup->addGate(andGate3, 0, 2);
-  placementGroup->addGate(andGate4, 3, 3);
-  placementGroup->addGate(orGate5 , 0, 4);
 }
 
 void
@@ -1811,41 +3358,76 @@ buildComparator8()
 {
   CQPlacementGroup *placementGroup = addPlacementGroup(CQPlacementGroup::Placement::VERTICAL);
 
-  CQConnection *iallEqualCon = addConnection("i_all_equal");
-  CQConnection *iaLargerCon  = addConnection("i_a_larger" );
+  placementGroup->setCollapseName("comparator8");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  auto addPlacementBus = [&](const QString &name, int n) {
+    CQBus *bus = addBus(name, n);
+
+    placementGroup->addBus(bus);
+
+    return bus;
+  };
+
+  //---
+
+  CQConnection *iallEqualCon = addPlacementConn("i_all_equal");
+  CQConnection *iaLargerCon  = addPlacementConn("i_a_larger" );
 
   iallEqualCon->setValue(1);
 
-  CQBus *abus = addBus("a", 8); abus->setPosition(CQBus::Position::START);
-  CQBus *bbus = addBus("b", 8); bbus->setPosition(CQBus::Position::END);
-  CQBus *cbus = addBus("c", 8);
+  //---
+
+  CQBus *abus = addPlacementBus("a", 8); abus->setPosition(CQBus::Position::START,  0.25);
+  CQBus *bbus = addPlacementBus("b", 8); bbus->setPosition(CQBus::Position::END  , -0.25);
+  CQBus *cbus = addPlacementBus("c", 8);
+
+  //---
 
   CQConnection *acon[8];
   CQConnection *bcon[8];
   CQConnection *ccon[8];
 
+  CQPlacementGroup *placementGroup1[8];
+
   for (int i = 0; i < 8; ++i) {
-    CQPlacementGroup *placementGroup1 =
-      placementGroup->addPlacementGroup(CQPlacementGroup::Placement::GRID, 4, 5);
+    placementGroup1[i] = new CQPlacementGroup(CQPlacementGroup::Placement::GRID, 4, 5);
 
     //---
 
-    CQXorGate  *xorGate1 = addGateT<CQXorGate >("xor1");
-    CQNotGate  *notGate2 = addGateT<CQNotGate >("not2");
-    CQAndGate  *andGate3 = addGateT<CQAndGate >("and3");
-    CQAnd3Gate *andGate4 = addGateT<CQAnd3Gate>("and4");
-    CQOrGate   *orGate5  = addGateT<CQOrGate  >("or5" );
+    CQXorGate  *xorGate1 = addGateT<CQXorGate >(QString("xor1[%1]").arg(i));
+    CQNotGate  *notGate2 = addGateT<CQNotGate >(QString("not2[%1]").arg(i));
+    CQAndGate  *andGate3 = addGateT<CQAndGate >(QString("and3[%1]").arg(i));
+    CQAnd3Gate *andGate4 = addGateT<CQAnd3Gate>(QString("and4[%1]").arg(i));
+    CQOrGate   *orGate5  = addGateT<CQOrGate  >(QString("or5[%1]" ).arg(i));
 
-    acon[i] = addConnection("a");
-    bcon[i] = addConnection("b");
-    ccon[i] = addConnection("c");
+    placementGroup1[i]->addGate(xorGate1, 2, 0);
+    placementGroup1[i]->addGate(notGate2, 1, 1);
+    placementGroup1[i]->addGate(andGate3, 0, 2);
+    placementGroup1[i]->addGate(andGate4, 3, 3);
+    placementGroup1[i]->addGate(orGate5 , 0, 4);
 
-    CQConnection *equalCon = addConnection("equal");
+    //---
 
-    CQConnection *dcon = addConnection("d");
+    acon[i] = addPlacementConn("a");
+    bcon[i] = addPlacementConn("b");
+    ccon[i] = addPlacementConn("c");
 
-    CQConnection *oallEqualCon = addConnection("o_all_equal");
-    CQConnection *oaLargerCon  = addConnection("o_a_larger" );
+    CQConnection *equalCon = addPlacementConn("equal");
+
+    CQConnection *dcon = addPlacementConn("d");
+
+    CQConnection *oallEqualCon = addPlacementConn("o_all_equal");
+    CQConnection *oaLargerCon  = addPlacementConn("o_a_larger" );
 
     xorGate1->connect("a", acon[i]);
     xorGate1->connect("b", bcon[i]);
@@ -1867,11 +3449,10 @@ buildComparator8()
     orGate5->connect("b", dcon);
     orGate5->connect("c", oaLargerCon);
 
-    placementGroup1->addGate(xorGate1, 1, 0);
-    placementGroup1->addGate(notGate2, 2, 1);
-    placementGroup1->addGate(andGate3, 3, 2);
-    placementGroup1->addGate(andGate4, 0, 4);
-    placementGroup1->addGate(orGate5 , 3, 4);
+    andGate3->setOrientation(CQGate::Orientation::R90);
+    orGate5 ->setOrientation(CQGate::Orientation::R90);
+
+    //---
 
     abus->addConnection(acon[i], i);
     bbus->addConnection(bcon[i], i);
@@ -1880,6 +3461,150 @@ buildComparator8()
     iallEqualCon = oallEqualCon;
     iaLargerCon  = oaLargerCon;
   }
+
+  for (int i = 0; i < 8; ++i)
+    placementGroup->addPlacementGroup(placementGroup1[7 - i]);
+}
+
+void
+CQSchem::
+buildBus0()
+{
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::HORIZONTAL);
+
+  placementGroup->setCollapseName("bus0");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  auto addPlacementBus = [&](const QString &name, int n) {
+    CQBus *bus = addBus(name, n);
+
+    placementGroup->addBus(bus);
+
+    return bus;
+  };
+
+  //---
+
+  CQOr8Gate *orGate  = addGateT<CQOr8Gate>("or");
+  CQNotGate *notGate = addGateT<CQNotGate>("not");
+
+  CQBus *ibus = addPlacementBus("ibus", 8);
+
+  ibus->setGate(orGate);
+
+  CQConnection *icon[8];
+
+  for (int i = 0; i < 8; ++i) {
+    icon[i] = addPlacementConn(CQOr8Gate::iname(i));
+
+    orGate->connect(CQOr8Gate::iname(i), icon[i]);
+
+    ibus->addConnection(icon[i], i);
+  }
+
+  CQConnection *ocon = addPlacementConn("o");
+  CQConnection *zcon = addPlacementConn("zero");
+
+  orGate->connect("o", ocon);
+
+  notGate->connect("a", ocon);
+  notGate->connect("c", zcon);
+}
+
+void
+CQSchem::
+buildBus1()
+{
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::GRID, 2, 8);
+
+  placementGroup->setCollapseName("bus1");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  auto addPlacementBus = [&](const QString &name, int n) {
+    CQBus *bus = addBus(name, n);
+
+    placementGroup->addBus(bus);
+
+    return bus;
+  };
+
+  //---
+
+  CQAndGate *andGate[7];
+
+  for (int i = 0; i < 7; ++i) {
+    andGate[i] = addGateT<CQAndGate>(QString("and%1").arg(i));
+
+    andGate[i]->setOrientation(CQGate::Orientation::R90);
+  }
+
+  CQOrGate *orGate = addGateT<CQOrGate >("or");
+
+  orGate->setOrientation(CQGate::Orientation::R90);
+
+  CQNotGate *notGate = addGateT<CQNotGate>("not");
+
+  notGate->setOrientation(CQGate::Orientation::R180);
+
+  CQBus *ibus = addPlacementBus("ibus", 8);
+  CQBus *obus = addPlacementBus("obus", 8);
+
+  ibus->setFlipped(true);
+  obus->setFlipped(true);
+
+  CQConnection *bcon1 = addPlacementConn("bus1");
+  CQConnection *bcon2 = addPlacementConn("nbus1");
+
+  CQConnection *icon[8];
+  CQConnection *ocon[8];
+
+  for (int i = 0; i < 8; ++i) {
+    icon[i] = addPlacementConn(QString("i%1").arg(i));
+    ocon[i] = addPlacementConn(QString("o%1").arg(i));
+
+    if (i < 7) {
+      andGate[i]->connect("a", bcon2);
+      andGate[i]->connect("b", icon[i]);
+      andGate[i]->connect("c", ocon[i]);
+    }
+    else {
+      orGate->connect("a", bcon1);
+      orGate->connect("b", icon[i]);
+      orGate->connect("c", ocon[i]);
+    }
+
+    ibus->addConnection(icon[i], i);
+    obus->addConnection(ocon[i], i);
+  }
+
+  notGate->connect("a", bcon1);
+  notGate->connect("c", bcon2);
+
+  for (int i = 0; i < 7; ++i)
+    placementGroup->addGate(andGate[i], 0, i);
+
+  placementGroup->addGate(orGate , 0, 7);
+  placementGroup->addGate(notGate, 1, 7);
 }
 
 void
@@ -1888,6 +3613,26 @@ buildRam256()
 {
   CQPlacementGroup *placementGroup =
     addPlacementGroup(CQPlacementGroup::Placement::GRID, 2, 3);
+
+  placementGroup->setCollapseName("ram256");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  auto addPlacementBus = [&](const QString &name, int n) {
+    CQBus *bus = addBus(name, n);
+
+    placementGroup->addBus(bus);
+
+    return bus;
+  };
 
   //---
 
@@ -1907,16 +3652,16 @@ buildRam256()
 
   //---
 
-  CQBus *ibus  = addBus("i" , 8);
-  CQBus *obus1 = addBus("o1", 4);
-  CQBus *obus2 = addBus("o2", 4);
+  CQBus *ibus  = addPlacementBus("i" , 8);
+  CQBus *obus1 = addPlacementBus("o1", 4);
+  CQBus *obus2 = addPlacementBus("o2", 4);
 
   for (int i = 0; i < 8; ++i) {
     QString iname = CQRegisterGate::iname(i);
     QString oname = CQRegisterGate::oname(i);
 
-    CQConnection *in  = addConnection(iname);
-    CQConnection *out = addConnection(oname);
+    CQConnection *in  = addPlacementConn(iname);
+    CQConnection *out = addPlacementConn(oname);
 
     rgate->connect(iname, in );
     rgate->connect(oname, out);
@@ -1940,26 +3685,26 @@ buildRam256()
     QString honame = CQDecoder16Gate::oname(i);
     QString voname = CQDecoder16Gate::oname(i);
 
-    hout[i] = addConnection(honame);
-    vout[i] = addConnection(voname);
+    hout[i] = addPlacementConn(honame);
+    vout[i] = addPlacementConn(voname);
 
     hdec->connect(honame, hout[i]);
     vdec->connect(voname, vout[i]);
   }
 
-  rgate->connect("s", addConnection("sa"));
+  rgate->connect("s", addPlacementConn("sa"));
 
-  CQConnection *s = addConnection("s");
-  CQConnection *e = addConnection("e");
+  CQConnection *s = addPlacementConn("s");
+  CQConnection *e = addPlacementConn("e");
 
   //---
 
   CQConnection *bus[8];
 
-  CQBus *iobus = addBus("io", 8);
+  CQBus *iobus = addPlacementBus("io", 8);
 
   for (int i = 0; i < 8; ++i) {
-    bus[i] = addConnection(QString("bus[%1]").arg(i));
+    bus[i] = addPlacementConn(QString("bus[%1]").arg(i));
 
     iobus->addConnection(bus[i], i);
   }
@@ -1981,7 +3726,7 @@ buildRam256()
       xgate->connect("a", hout[r]);
       xgate->connect("b", vout[c]);
 
-      CQConnection *t1 = addConnection("t1");
+      CQConnection *t1 = addPlacementConn("t1");
 
       xgate->connect("c", t1);
 
@@ -1990,8 +3735,8 @@ buildRam256()
 
       CQRegisterGate *rgate = addGateT<CQRegisterGate>(QString("R_%1_%2").arg(r).arg(c));
 
-      CQConnection *t2 = addConnection("t2");
-      CQConnection *t3 = addConnection("t3");
+      CQConnection *t2 = addPlacementConn("t2");
+      CQConnection *t3 = addPlacementConn("t3");
 
       agate->connect("a", t1);
       agate->connect("b", s);
@@ -2014,10 +3759,10 @@ buildRam256()
 
       //---
 
-      placementGroup2->addGate(xgate, 0, 0);
-      placementGroup2->addGate(agate, 0, 1);
-      placementGroup2->addGate(bgate, 1, 1);
-      placementGroup2->addGate(rgate, 1, 2, 2, 1);
+      placementGroup2->addGate(xgate, 1, 0);
+      placementGroup2->addGate(agate, 1, 1);
+      placementGroup2->addGate(bgate, 0, 1);
+      placementGroup2->addGate(rgate, 0, 2, 2, 1);
 
       //---
 
@@ -2034,6 +3779,26 @@ buildRam65536()
 {
   CQPlacementGroup *placementGroup =
     addPlacementGroup(CQPlacementGroup::Placement::GRID, 3, 3);
+
+  placementGroup->setCollapseName("ram65536");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  auto addPlacementBus = [&](const QString &name, int n) {
+    CQBus *bus = addBus(name, n);
+
+    placementGroup->addBus(bus);
+
+    return bus;
+  };
 
   //---
 
@@ -2057,17 +3822,17 @@ buildRam65536()
 
   //---
 
-  CQBus *ibus  = addBus("i" , 8);
-  CQBus *obus1 = addBus("o1", 8);
-  CQBus *obus2 = addBus("o2", 8);
+  CQBus *ibus  = addPlacementBus("i" , 8);
+  CQBus *obus1 = addPlacementBus("o1", 8);
+  CQBus *obus2 = addPlacementBus("o2", 8);
 
   for (int i = 0; i < 8; ++i) {
     QString iname = CQRegisterGate::iname(i);
     QString oname = CQRegisterGate::oname(i);
 
-    CQConnection *in   = addConnection(iname);
-    CQConnection *out1 = addConnection(oname);
-    CQConnection *out2 = addConnection(oname);
+    CQConnection *in   = addPlacementConn(iname);
+    CQConnection *out1 = addPlacementConn(oname);
+    CQConnection *out2 = addPlacementConn(oname);
 
     rgate0->connect(iname, in);
     rgate1->connect(iname, in);
@@ -2092,27 +3857,27 @@ buildRam65536()
     QString honame = CQDecoder256Gate::oname(i);
     QString voname = CQDecoder256Gate::oname(i);
 
-    hout[i] = addConnection(honame);
-    vout[i] = addConnection(voname);
+    hout[i] = addPlacementConn(honame);
+    vout[i] = addPlacementConn(voname);
 
     hdec->connect(honame, hout[i]);
     vdec->connect(voname, vout[i]);
   }
 
-  rgate0->connect("s", addConnection("s0"));
-  rgate1->connect("s", addConnection("s1"));
+  rgate0->connect("s", addPlacementConn("s0"));
+  rgate1->connect("s", addPlacementConn("s1"));
 
-  CQConnection *s = addConnection("s");
-  CQConnection *e = addConnection("e");
+  CQConnection *s = addPlacementConn("s");
+  CQConnection *e = addPlacementConn("e");
 
   //---
 
   CQConnection *bus[8];
 
-  CQBus *iobus = addBus("io", 8);
+  CQBus *iobus = addPlacementBus("io", 8);
 
   for (int i = 0; i < 8; ++i) {
-    bus[i] = addConnection(QString("bus[%1]").arg(i));
+    bus[i] = addPlacementConn(QString("bus[%1]").arg(i));
 
     iobus->addConnection(bus[i], i);
   }
@@ -2123,7 +3888,8 @@ buildRam65536()
     new CQPlacementGroup(CQPlacementGroup::Placement::GRID, 256, 256);
 
   for (int r = 0; r < 256; ++r) {
-std::cerr << "Row: " << r << "\n";
+    //std::cerr << "Row: " << r << "\n";
+
     for (int c = 0; c < 256; ++c) {
       CQPlacementGroup *placementGroup2 =
         new CQPlacementGroup(CQPlacementGroup::Placement::GRID, 2, 3);
@@ -2135,7 +3901,7 @@ std::cerr << "Row: " << r << "\n";
       xgate->connect("a", hout[r]);
       xgate->connect("b", vout[c]);
 
-      CQConnection *t1 = addConnection("t1");
+      CQConnection *t1 = addPlacementConn("t1");
 
       xgate->connect("c", t1);
 
@@ -2144,8 +3910,8 @@ std::cerr << "Row: " << r << "\n";
 
       CQRegisterGate *rgate = addGateT<CQRegisterGate>(QString("R_%1_%2").arg(r).arg(c));
 
-      CQConnection *t2 = addConnection("t2");
-      CQConnection *t3 = addConnection("t3");
+      CQConnection *t2 = addPlacementConn("t2");
+      CQConnection *t3 = addPlacementConn("t3");
 
       agate->connect("a", t1);
       agate->connect("b", s);
@@ -2182,6 +3948,211 @@ std::cerr << "Row: " << r << "\n";
   placementGroup->addPlacementGroup(placementGroup1, 0, 2);
 }
 
+void
+CQSchem::
+buildAlu()
+{
+  CQPlacementGroup *placementGroup =
+    addPlacementGroup(CQPlacementGroup::Placement::GRID, 8, 4);
+
+  placementGroup->setCollapseName("alu");
+
+  //---
+
+  auto addPlacementConn = [&](const QString &name) {
+    CQConnection *conn = addConnection(name);
+
+    placementGroup->addConnection(conn);
+
+    return conn;
+  };
+
+  auto addPlacementBus = [&](const QString &name, int n) {
+    CQBus *bus = addBus(name, n);
+
+    placementGroup->addBus(bus);
+
+    return bus;
+  };
+
+  //---
+
+  CQComparator8Gate *xorerGate   = addGateT<CQComparator8Gate>("XOR");
+  CQOrerGate        *orerGate    = addGateT<CQOrerGate       >("OR" );
+  CQAnderGate       *anderGate   = addGateT<CQAnderGate      >("AND");
+  CQInverterGate    *noterGate   = addGateT<CQInverterGate   >("NOT");
+  CQLShiftGate      *lshiftGate  = addGateT<CQLShiftGate     >("SHL");
+  CQRShiftGate      *rshiftGate  = addGateT<CQRShiftGate     >("SHR");
+  CQAdder8Gate      *adderGate   = addGateT<CQAdder8Gate     >("ADD");
+  CQDecoder8Gate    *decoderGate = addGateT<CQDecoder8Gate   >("3x8");
+
+  CQGate *gates[7];
+
+  gates[0] = xorerGate;
+  gates[1] = orerGate;
+  gates[2] = anderGate;
+  gates[3] = noterGate;
+  gates[4] = lshiftGate;
+  gates[5] = rshiftGate;
+  gates[6] = adderGate;
+
+  CQEnablerGate *enablerGate[7];
+
+  for (int i = 0; i < 7; ++i)
+    enablerGate[i] = addGateT<CQEnablerGate>("E");
+
+  CQAndGate *andGate[3];
+
+  for (int i = 0; i < 3; ++i)
+    andGate[i] = addGateT<CQAndGate>("and");
+
+  CQBus0Gate *zeroGate = addGateT<CQBus0Gate>("Z");
+
+  placementGroup->addGate(xorerGate  , 7, 0);
+  placementGroup->addGate(orerGate   , 6, 0);
+  placementGroup->addGate(anderGate  , 5, 0);
+  placementGroup->addGate(noterGate  , 4, 0);
+  placementGroup->addGate(lshiftGate , 3, 0);
+  placementGroup->addGate(rshiftGate , 2, 0);
+  placementGroup->addGate(adderGate  , 1, 0);
+  placementGroup->addGate(decoderGate, 0, 1);
+
+  for (int i = 0; i < 3; ++i) {
+    CQPlacementGroup *placementGroup1 =
+      new CQPlacementGroup(CQPlacementGroup::Placement::VERTICAL);
+
+    placementGroup1->addGate(enablerGate[i]);
+    placementGroup1->addGate(andGate    [i]);
+
+    placementGroup->addPlacementGroup(placementGroup1, i + 1, 2);
+  }
+
+  for (int i = 0; i < 4; ++i)
+    placementGroup->addGate(enablerGate[3 + i], 4 + i, 2);
+
+  placementGroup->addGate(zeroGate, 6, 3, 2, 1);
+
+  //---
+
+  CQBus *abus = addPlacementBus("a", 8);
+  CQBus *bbus = addPlacementBus("b", 8);
+  CQBus *cbus = addPlacementBus("c", 8);
+
+  CQBus *cbus1[7];
+
+  for (int i = 0; i < 7; ++i) {
+    cbus1[i] = addPlacementBus("c", 8);
+
+    cbus1[i]->setGate(gates[i]);
+  }
+
+  //---
+
+  CQConnection *acon[8];
+  CQConnection *bcon[8];
+  CQConnection *ccon[8];
+  CQConnection *ccon1[7][8];
+
+  for (int i = 0; i < 8; ++i) {
+    QString aname = QString("a%1").arg(i);
+    QString bname = QString("b%1").arg(i);
+    QString cname = QString("c%1").arg(i);
+
+    acon[i] = addPlacementConn(aname);
+    bcon[i] = addPlacementConn(bname);
+    ccon[i] = addPlacementConn(cname);
+
+    abus->addConnection(acon[i], i);
+    bbus->addConnection(bcon[i], i);
+    cbus->addConnection(ccon[i], i);
+
+    for (int j = 0; j < 7; ++j) {
+      ccon1[j][i] = addPlacementConn(cname);
+
+      cbus1[j]->addConnection(ccon1[j][i], i);
+    }
+  }
+
+  for (int i = 0; i < 8; ++i) {
+    QString aname = QString("a%1").arg(i);
+    QString bname = QString("b%1").arg(i);
+    QString cname = QString("c%1").arg(i);
+
+    auto connectABC = [&](CQGate *gate, int ig) {
+      gate->connect(aname, acon[i]);
+      gate->connect(bname, bcon[i]);
+      gate->connect(cname, ccon1[ig][i]);
+    };
+
+    connectABC(xorerGate, 0);
+    connectABC(orerGate , 1);
+    connectABC(anderGate, 2);
+
+    noterGate->connect(aname, acon[i]);
+    noterGate->connect(cname, ccon1[3][i]);
+
+    lshiftGate->connect(CQLShiftGate::iname(i), acon[i]);
+    lshiftGate->connect(CQLShiftGate::oname(i), ccon1[4][i]);
+
+    rshiftGate->connect(CQRShiftGate::iname(i), acon[i]);
+    rshiftGate->connect(CQRShiftGate::oname(i), ccon1[5][i]);
+
+    connectABC(adderGate, 6);
+  }
+
+  for (int j = 0; j < 7; ++j) {
+    for (int i = 0; i < 8; ++i) {
+      enablerGate[j]->connect(CQEnablerGate::iname(i), ccon1[j][i]);
+      enablerGate[j]->connect(CQEnablerGate::oname(i), ccon[i]);
+    }
+  }
+
+  xorerGate->connect("a_larger", addPlacementConn("a_larger"));
+  xorerGate->connect("equal"   , addPlacementConn("equal"   ));
+
+  for (int i = 0; i < 8; ++i)
+    zeroGate->connect(CQBus0Gate::iname(i), ccon[i]);
+
+  zeroGate->connect("zero", addPlacementConn("zero"));
+
+  decoderGate->connect(CQDecoder8Gate::iname(0), addPlacementConn("d1"));
+  decoderGate->connect(CQDecoder8Gate::iname(1), addPlacementConn("d2"));
+  decoderGate->connect(CQDecoder8Gate::iname(2), addPlacementConn("d3"));
+
+  CQConnection *econ[8];
+
+  for (int i = 0; i < 8; ++i) {
+    econ[i] = addPlacementConn("e");
+
+    decoderGate->connect(CQDecoder8Gate::oname(i), econ[i]);
+
+    if (i > 0)
+      enablerGate[i - 1]->connect("e", econ[i]);
+  }
+
+  CQConnection *carry_out1 = addPlacementConn("carry_out");
+
+  CQConnection aocon[3];
+
+  for (int i = 0; i < 3; ++i)
+    andGate[i]->connect("c", carry_out1);
+
+  CQConnection *lshift_out = addPlacementConn("shift_out");
+  CQConnection *rshift_out = addPlacementConn("shift_out");
+  CQConnection *carry_out  = addPlacementConn("carry_out");
+
+  andGate[0]->connect("a", lshift_out);
+  andGate[0]->connect("b", econ[5]);
+
+  andGate[1]->connect("a", rshift_out);
+  andGate[1]->connect("b", econ[6]);
+
+  andGate[2]->connect("a", carry_out);
+  andGate[2]->connect("b", econ[7]);
+}
+
+//------
+
 CQConnection *
 CQSchem::
 addConnection(const QString &name)
@@ -2195,11 +4166,55 @@ addConnection(const QString &name)
 
 void
 CQSchem::
+removeConnection(CQConnection *connection)
+{
+  int i = 0;
+  int n = connections_.size();
+
+  for ( ; i < n; ++i) {
+    if (connections_[i] == connection)
+      break;
+  }
+
+  assert(i < n);
+
+  delete connections_[i++];
+
+  for ( ; i < n; ++i)
+    connections_[i - 1] = connections_[i];
+
+  connections_.pop_back();
+}
+
+void
+CQSchem::
 addGate(CQGate *gate)
 {
   gates_.push_back(gate);
 
   placementGroup_->addGate(gate);
+}
+
+void
+CQSchem::
+removeGate(CQGate *gate)
+{
+  int i = 0;
+  int n = gates_.size();
+
+  for ( ; i < n; ++i) {
+    if (gates_[i] == gate)
+      break;
+  }
+
+  assert(i < n);
+
+  delete gates_[i++];
+
+  for ( ; i < n; ++i)
+    gates_[i - 1] = gates_[i];
+
+  gates_.pop_back();
 }
 
 CQBus *
@@ -2211,6 +4226,28 @@ addBus(const QString &name, int n)
   buses_.push_back(bus);
 
   return bus;
+}
+
+void
+CQSchem::
+removeBus(CQBus *bus)
+{
+  int i = 0;
+  int n = buses_.size();
+
+  for ( ; i < n; ++i) {
+    if (buses_[i] == bus)
+      break;
+  }
+
+  assert(i < n);
+
+  delete buses_[i++];
+
+  for ( ; i < n; ++i)
+    buses_[i - 1] = buses_[i];
+
+  buses_.pop_back();
 }
 
 CQPlacementGroup *
@@ -2244,6 +4281,54 @@ exec()
       if (gate->exec())
         changed = true;
     }
+  }
+}
+
+void
+CQSchem::
+test()
+{
+  std::vector<CQConnection *> in, out;
+
+  for (const auto &connection : connections_) {
+    if      (connection->isInput())
+      in.push_back(connection);
+    else if (connection->isOutput())
+      out.push_back(connection);
+  }
+
+  int ni = in .size();
+  int no = out.size();
+
+  int n = std::pow(2, ni);
+
+  for (int j = 0; j < ni; ++j)
+    std::cerr << in[ni - j - 1]->name().toStdString();
+
+  std::cerr << " = ";
+
+  for (int j = 0; j < no; ++j)
+    std::cerr << out[no - j - 1]->name().toStdString();
+
+  std::cerr << "\n";
+
+  for (int i = 0; i < n; ++i) {
+    for (int j = 0; j < ni; ++j)
+      in[j]->setValue(i & (1 << j));
+
+    exec();
+
+    //---
+
+    for (int j = 0; j < ni; ++j)
+      std::cerr << (in[ni - j - 1]->getValue() ? "1" : "0");
+
+    std::cerr << " = ";
+
+    for (int j = 0; j < no; ++j)
+      std::cerr << (out[no - j - 1]->getValue() ? "1" : "0");
+
+    std::cerr << "\n";
   }
 }
 
@@ -2315,10 +4400,11 @@ paintEvent(QPaintEvent *)
 
   painter.fillRect(rect(), QBrush(Qt::black));
 
-  renderer_.schem   = this;
-  renderer_.painter = &painter;
-  renderer_.prect   = rect();
-  renderer_.rect    = rect_;
+  renderer_.schem         = this;
+  renderer_.painter       = &painter;
+  renderer_.prect         = rect();
+  renderer_.rect          = rect_;
+  renderer_.placementRect = placementGroup_->rect();
 
   for (const auto &gate : gates_)
     gate->draw(&renderer_);
@@ -2387,6 +4473,24 @@ mousePressEvent(QMouseEvent *e)
         update();
       }
     }
+  }
+  else if (e->button() == Qt::RightButton) {
+    QMenu *menu = new QMenu(this);
+
+    auto addAction = [&](QMenu *menu, const QString &name, const char *slotName) {
+      QAction *action = new QAction(name, menu);
+
+      connect(action, SIGNAL(triggered()), this, slotName);
+
+      menu->addAction(action);
+
+      return action;
+    };
+
+    addAction(menu, "Expand"  , SLOT(expandSlot()));
+    addAction(menu, "Collapse", SLOT(collapseSlot()));
+
+    menu->exec(mapToGlobal(e->pos()));
   }
 }
 
@@ -2467,21 +4571,21 @@ void
 CQSchem::
 keyPressEvent(QKeyEvent *e)
 {
-  if      (e->key() ==  Qt::Key_Plus)
+  if      (e->key() == Qt::Key_Plus)
     renderer_.displayTransform.zoomIn();
-  else if (e->key() ==  Qt::Key_Minus)
+  else if (e->key() == Qt::Key_Minus)
     renderer_.displayTransform.zoomOut();
-  else if (e->key() ==  Qt::Key_Left)
+  else if (e->key() == Qt::Key_Left)
     renderer_.displayTransform.panLeft();
-  else if (e->key() ==  Qt::Key_Right)
+  else if (e->key() == Qt::Key_Right)
     renderer_.displayTransform.panRight();
-  else if (e->key() ==  Qt::Key_Up)
+  else if (e->key() == Qt::Key_Up)
     renderer_.displayTransform.panUp();
-  else if (e->key() ==  Qt::Key_Down)
+  else if (e->key() == Qt::Key_Down)
     renderer_.displayTransform.panDown();
-  else if (e->key() ==  Qt::Key_Home)
+  else if (e->key() == Qt::Key_Home)
     renderer_.displayTransform.reset();
-  else if (e->key() ==  Qt::Key_Greater) {
+  else if (e->key() == Qt::Key_Greater) {
     Gates gates;
 
     selectedGates(gates);
@@ -2489,7 +4593,7 @@ keyPressEvent(QKeyEvent *e)
     for (auto &gate : gates)
       gate->nextOrient();
   }
-  else if (e->key() ==  Qt::Key_Less) {
+  else if (e->key() == Qt::Key_Less) {
     Gates gates;
 
     selectedGates(gates);
@@ -2497,6 +4601,68 @@ keyPressEvent(QKeyEvent *e)
     for (auto &gate : gates)
       gate->prevOrient();
   }
+  else if (e->key() == Qt::Key_F) {
+    Gates gates;
+
+    selectedGates(gates);
+
+    for (auto &gate : gates)
+      gate->setFlipped(! gate->isFlipped());
+  }
+
+  update();
+}
+
+void
+CQSchem::
+expandSlot()
+{
+  std::vector<CQPlacementGroup *> expandGroups;
+
+  for (auto &placementGroupData : placementGroup_->placementGroups()) {
+    CQPlacementGroup *placementGroup = placementGroupData.placementGroup;
+
+    if (placementGroup->expandName() != "")
+      expandGroups.push_back(placementGroup);
+  }
+
+  for (auto &placementGroup : expandGroups) {
+    CQPlacementGroup *parentGroup = placementGroup->parent();
+
+    bool rc = execGate(placementGroup->expandName());
+    assert(rc);
+
+    parentGroup->replacePlacementGroup(this, placementGroup);
+  }
+
+  place();
+
+  update();
+}
+
+void
+CQSchem::
+collapseSlot()
+{
+  std::vector<CQPlacementGroup *> collapseGroups;
+
+  for (auto &placementGroupData : placementGroup_->placementGroups()) {
+    CQPlacementGroup *placementGroup = placementGroupData.placementGroup;
+
+    if (placementGroup->collapseName() != "")
+      collapseGroups.push_back(placementGroup);
+  }
+
+  for (auto &placementGroup : collapseGroups) {
+    CQPlacementGroup *parentGroup = placementGroup->parent();
+
+    bool rc = execGate(placementGroup->collapseName());
+    assert(rc);
+
+    parentGroup->replacePlacementGroup(this, placementGroup);
+  }
+
+  place();
 
   update();
 }
@@ -2570,23 +4736,23 @@ drawConnection(CQSchemRenderer *renderer, const QPointF &p1, const QPointF &p2)
     if (dy > 1E-6) {
       double ym = (p1.y() + p2.y())/2.0;
 
-      renderer->painter->drawLine(p1                 , QPointF(p1.x(), ym));
-      renderer->painter->drawLine(QPointF(p1.x(), ym), QPointF(p2.x(), ym));
-      renderer->painter->drawLine(QPointF(p2.x(), ym), p2                 );
+      CQSchem::drawLine(renderer, p1                 , QPointF(p1.x(), ym));
+      CQSchem::drawLine(renderer, QPointF(p1.x(), ym), QPointF(p2.x(), ym));
+      CQSchem::drawLine(renderer, QPointF(p2.x(), ym), p2                 );
     }
     else
-      renderer->painter->drawLine(p1, p2);
+      CQSchem::drawLine(renderer, p1, p2);
   }
   else {
     if (dx > 1E-6) {
       double xm = (p1.x() + p2.x())/2.0;
 
-      renderer->painter->drawLine(p1                 , QPointF(xm, p1.y()));
-      renderer->painter->drawLine(QPointF(xm, p1.y()), QPointF(xm, p2.y()));
-      renderer->painter->drawLine(QPointF(xm, p2.y()), p2                 );
+      CQSchem::drawLine(renderer, p1                 , QPointF(xm, p1.y()));
+      CQSchem::drawLine(renderer, QPointF(xm, p1.y()), QPointF(xm, p2.y()));
+      CQSchem::drawLine(renderer, QPointF(xm, p2.y()), p2                 );
     }
     else
-      renderer->painter->drawLine(p1, p2);
+      CQSchem::drawLine(renderer, p1, p2);
   }
 }
 
@@ -2595,7 +4761,7 @@ CQSchem::
 drawTextInRect(CQSchemRenderer *renderer, const QRectF &r, const QString &text)
 {
   if (r.height() < 3)
-   return;
+    return;
 
   renderer->setFontSize(r.height());
 
@@ -2606,7 +4772,30 @@ drawTextInRect(CQSchemRenderer *renderer, const QRectF &r, const QString &text)
 
 void
 CQSchem::
-drawTextAtPoint(CQSchemRenderer *renderer, const QPointF &p, const QString &text)
+drawTextOnLine(CQSchemRenderer *renderer, const QPointF &p1, const QPointF &p2,
+               const QString &name, TextLinePos pos)
+{
+  if      (pos == TextLinePos::START) {
+    QPointF pt(std::min(p1.x(), p2.x()) - 4, (p1.y() + p2.y())/2);
+
+    drawTextAtPoint(renderer, pt, name, CQSchem::TextAlign::RIGHT);
+  }
+  else if (pos == TextLinePos::END) {
+    QPointF pt(std::max(p1.x(), p2.x()) + 4, (p1.y() + p2.y())/2);
+
+    drawTextAtPoint(renderer, pt, name, CQSchem::TextAlign::LEFT);
+  }
+  else {
+    QPointF pt((p1.x() + p2.x())/2, (p1.y() + p2.y())/2);
+
+    drawTextAtPoint(renderer, pt, name);
+  }
+}
+
+void
+CQSchem::
+drawTextAtPoint(CQSchemRenderer *renderer, const QPointF &p, const QString &text,
+                TextAlign align)
 {
   double fh = renderer->windowHeightToPixelHeight(0.25);
   if (fh < 3) return;
@@ -2615,15 +4804,50 @@ drawTextAtPoint(CQSchemRenderer *renderer, const QPointF &p, const QString &text
 
   QFontMetricsF fm(renderer->painter->font());
 
-  double dx = fm.width(text)/2.0;
+  double dx = fm.width(text);
   double dy = (fm.ascent() - fm.descent())/2.0;
 
-  QPointF pm(p.x() - dx, p.y() + dy);
+  QPointF pm;
+
+  if      (align == TextAlign::CENTER)
+    pm = QPointF(p.x() - dx/2.0, p.y() + dy);
+  else if (align == TextAlign::RIGHT)
+    pm = QPointF(p.x() - dx, p.y() + dy);
+  else
+    pm = QPointF(p.x(), p.y() + dy);
 
   renderer->painter->drawText(pm, text);
 }
 
+void
+CQSchem::
+drawLine(CQSchemRenderer *renderer, const QPointF &p1, const QPointF &p2)
+{
+  double dx = std::abs(p2.x() - p1.x());
+  double dy = std::abs(p2.y() - p1.y());
+
+  assert(int(dx) <= 1 || int(dy) <= 1);
+
+  renderer->painter->drawLine(p1, p2);
+}
+
 //---
+
+CQGate::
+CQGate(const QString &name) :
+ name_(name)
+{
+}
+
+CQGate::
+~CQGate()
+{
+  for (auto &port : inputs_)
+    delete port;
+
+  for (auto &port : outputs_)
+    delete port;
+}
 
 QSizeF
 CQGate::
@@ -2639,19 +4863,38 @@ draw(CQSchemRenderer *renderer) const
   if (! renderer->schem->isGateVisible())
     return;
 
-  if (renderer->schem->isShowGateText())
+  if (renderer->schem->isShowGateText()) {
+    renderer->painter->setPen(renderer->textColor);
+
     CQSchem::drawTextInRect(renderer, prect_, name());
+  }
 
 //renderer->painter->setPen(Qt::red);
 //renderer->painter->drawRect(prect_);
 
   if (renderer->schem->isShowPortText()) {
+    renderer->painter->setPen(renderer->textColor);
+
     for (auto &port : inputs())
       CQSchem::drawTextAtPoint(renderer, port->pixelPos(), port->name());
 
     for (auto &port : outputs())
       CQSchem::drawTextAtPoint(renderer, port->pixelPos(), port->name());
   }
+}
+
+void
+CQGate::
+drawRect(CQSchemRenderer *renderer) const
+{
+  renderer->painter->drawRect(prect_);
+}
+
+void
+CQGate::
+drawAnd(CQSchemRenderer *renderer) const
+{
+  drawAnd(renderer, px1(), py1(), px2(), py2());
 }
 
 void
@@ -2694,7 +4937,25 @@ drawAnd(CQSchemRenderer *renderer, double x1, double y1, double x2, double y2) c
 
   path.closeSubpath();
 
-  renderer->painter->strokePath(path, renderer->painter->pen());
+  renderer->painter->setBrush(renderer->gateFillColor);
+
+  renderer->painter->drawPath(path);
+}
+
+void
+CQGate::
+drawOr(CQSchemRenderer *renderer) const
+{
+  double x3, y3;
+
+  drawOr(renderer, x3, y3);
+}
+
+void
+CQGate::
+drawOr(CQSchemRenderer *renderer, double &x3, double &y3) const
+{
+  drawOr(renderer, px1(), py1(), px2(), py2(), x3, y3);
 }
 
 void
@@ -2711,50 +4972,59 @@ drawOr(CQSchemRenderer *renderer, double x1, double y1, double x2, double y2,
     x3 = x1 + (x2 - x1)/4.0;
     y3 = y1;
 
+    double x4 = x2 - (x2 - x1)/4.0;
+
     path.moveTo(x1, y1);
-    path.lineTo(xm, y1);
-    path.quadTo(x2, y1, x2, ym);
-    path.quadTo(x2, y2, xm, y2);
-    path.lineTo(x1, y2);
+    path.quadTo(x4, y1, x2, ym);
+    path.quadTo(x4, y2, x1, y2);
     path.quadTo(x3, ym, x1, y1);
   }
   else if (orientation() == Orientation::R90) {
     y3 = y1 + (y2 - y1)/4.0;
     x3 = x1;
 
+    double y4 = y2 - (y2 - y1)/4.0;
+
     path.moveTo(x2, y1);
-    path.lineTo(x2, ym);
-    path.quadTo(x2, y2, xm, y2);
-    path.quadTo(x1, y2, x1, ym);
-    path.lineTo(x1, y1);
+    path.quadTo(x2, y4, xm, y2);
+    path.quadTo(x1, y4, x1, y1);
     path.quadTo(xm, y3, x2, y1);
   }
   else if (orientation() == Orientation::R180) {
     x3 = x2 - (x2 - x1)/4.0;
     y3 = y2;
 
+    double x4 = x1 + (x2 - x1)/4.0;
+
     path.moveTo(x2, y2);
-    path.lineTo(xm, y2);
-    path.quadTo(x1, y2, x1, ym);
-    path.quadTo(x1, y1, xm, y1);
-    path.lineTo(x2, y1);
+    path.quadTo(x4, y2, x1, ym);
+    path.quadTo(x4, y1, x2, y1);
     path.quadTo(x3, ym, x2, y2);
   }
   else if (orientation() == Orientation::R270) {
     y3 = y2 - (y2 - y1)/4.0;
     x3 = x2;
 
+    double y4 = y1 + (y2 - y1)/4.0;
+
     path.moveTo(x1, y2);
-    path.lineTo(x1, ym);
-    path.quadTo(x1, y1, xm, y1);
-    path.quadTo(x2, y1, x2, ym);
-    path.lineTo(x2, y2);
+    path.quadTo(x1, y4, xm, y1);
+    path.quadTo(x2, y4, x2, y2);
     path.quadTo(xm, y3, x1, y2);
   }
 
   path.closeSubpath();
 
-  renderer->painter->strokePath(path, renderer->painter->pen());
+  renderer->painter->setBrush(renderer->gateFillColor);
+
+  renderer->painter->drawPath(path);
+}
+
+void
+CQGate::
+drawXor(CQSchemRenderer *renderer) const
+{
+  drawXor(renderer, px1(), py1(), px2(), py2());
 }
 
 void
@@ -2819,7 +5089,9 @@ drawNot(CQSchemRenderer *renderer) const
 
   path.closeSubpath();
 
-  renderer->painter->strokePath(path, renderer->painter->pen());
+  renderer->painter->setBrush(renderer->gateFillColor);
+
+  renderer->painter->drawPath(path);
 }
 
 void
@@ -2845,6 +5117,62 @@ drawNotIndicator(CQSchemRenderer *renderer) const
 
 void
 CQGate::
+drawAdder(CQSchemRenderer *renderer) const
+{
+  // draw gate
+  double xm1 = (px1() + pxm())/2.0;
+  double xm2 = (px2() + pxm())/2.0;
+  double ym1 = (py1() + pym())/2.0;
+  double ym2 = (py2() + pym())/2.0;
+
+  QPainterPath path;
+
+  if      (orientation() == Orientation::R0) {
+    path.moveTo(px1(), py1());
+    path.lineTo(px1(), ym1  );
+    path.lineTo(xm1  , pym());
+    path.lineTo(px1(), ym2  );
+    path.lineTo(px1(), py2());
+    path.lineTo(px2(), ym2  );
+    path.lineTo(px2(), ym1  );
+  }
+  else if (orientation() == Orientation::R90) {
+    path.moveTo(px1(), py1());
+    path.lineTo(xm1  , py1());
+    path.lineTo(pxm(), ym1  );
+    path.lineTo(xm2  , py1());
+    path.lineTo(px2(), py1());
+    path.lineTo(xm2  , py2());
+    path.lineTo(xm1  , py2());
+  }
+  else if (orientation() == Orientation::R180) {
+    path.moveTo(px2(), py1());
+    path.lineTo(px2(), ym1  );
+    path.lineTo(xm2  , pym());
+    path.lineTo(px2(), ym2  );
+    path.lineTo(px2(), py2());
+    path.lineTo(px1(), ym2  );
+    path.lineTo(px1(), ym1  );
+  }
+  else if (orientation() == Orientation::R270) {
+    path.moveTo(px1(), py2());
+    path.lineTo(xm1  , py2());
+    path.lineTo(pxm(), ym2  );
+    path.lineTo(xm2  , py2());
+    path.lineTo(px2(), py2());
+    path.lineTo(xm2  , py1());
+    path.lineTo(xm1  , py1());
+  }
+
+  path.closeSubpath();
+
+  renderer->painter->setBrush(renderer->gateFillColor);
+
+  renderer->painter->drawPath(path);
+}
+
+void
+CQGate::
 placePorts(int ni, int no) const
 {
   placePorts(px1(), py1(), px2(), py2(),
@@ -2864,6 +5192,9 @@ placePorts(double pix1, double piy1, double pix2, double piy2,
 
   if (orientation() == Orientation::R0 || orientation() == Orientation::R180) {
     bool flip = (orientation() == Orientation::R180);
+
+    if (isFlipped())
+      flip = ! flip;
 
     std::vector<double> pyi = calcYGaps(piy1, piy2, std::max(ni, 1), flip);
     std::vector<double> pyo = calcYGaps(poy1, poy2, std::max(no, 1), flip);
@@ -2888,6 +5219,9 @@ placePorts(double pix1, double piy1, double pix2, double piy2,
   }
   else {
     bool flip = (orientation() == Orientation::R90);
+
+    if (isFlipped())
+      flip = ! flip;
 
     std::vector<double> pxi = calcXGaps(pix1, pix2, std::max(ni, 1), flip);
     std::vector<double> pxo = calcXGaps(pox1, pox2, std::max(no, 1), flip);
@@ -2959,6 +5293,9 @@ placePortsOnSide(CQPort **ports, int n, const CQPort::Side &side) const
 
   if (side1 == CQPort::Side::LEFT || side1 == CQPort::Side::RIGHT) {
     bool flip = (side1 == CQPort::Side::RIGHT);
+
+    if (isFlipped())
+      flip = ! flip;
 
     std::vector<double> y = calcYGaps(n, flip);
 
@@ -3061,9 +5398,9 @@ CQGate::
 penColor(CQSchemRenderer *renderer) const
 {
   if (renderer->schem->insideGate() == this)
-    return Qt::cyan;
+    return renderer->insideColor;
 
-  return (isSelected() ? Qt::yellow : Qt::white);
+  return (isSelected() ? renderer->selectColor : renderer->gateStrokeColor);
 }
 
 //---
@@ -3106,7 +5443,7 @@ draw(CQSchemRenderer *renderer) const
   //---
 
   // draw gate
-  drawAnd(renderer, px1(), py1(), px2(), py2());
+  drawAnd(renderer);
 
   drawNotIndicator(renderer);
 
@@ -3212,7 +5549,7 @@ draw(CQSchemRenderer *renderer) const
   //---
 
   // draw gate
-  drawAnd(renderer, px1(), py1(), px2(), py2());
+  drawAnd(renderer);
 
   //---
 
@@ -3262,7 +5599,7 @@ draw(CQSchemRenderer *renderer) const
   //---
 
   // draw gate
-  drawAnd(renderer, px1(), py1(), px2(), py2());
+  drawAnd(renderer);
 
   //---
 
@@ -3313,7 +5650,7 @@ draw(CQSchemRenderer *renderer) const
   //---
 
   // draw gate
-  drawAnd(renderer, px1(), py1(), px2(), py2());
+  drawAnd(renderer);
 
   //---
 
@@ -3329,9 +5666,10 @@ CQAnd8Gate::
 CQAnd8Gate(const QString &name) :
  CQGate(name)
 {
-  addInputPorts(QStringList() << "a" << "b" << "c" << "d" << "e" << "f" << "g" << "h");
+  for (int i = 0; i < 8; ++i)
+    addInputPort(CQAnd8Gate::iname(i));
 
-  addOutputPort("i");
+  addOutputPort("o");
 }
 
 bool
@@ -3366,7 +5704,7 @@ draw(CQSchemRenderer *renderer) const
   //---
 
   // draw gate
-  drawAnd(renderer, px1(), py1(), px2(), py2());
+  drawAnd(renderer);
 
   //---
 
@@ -3416,9 +5754,61 @@ draw(CQSchemRenderer *renderer) const
   //---
 
   // draw gate
-  double x3, y3;
+  drawOr(renderer);
 
-  drawOr(renderer, px1(), py1(), px2(), py2(), x3, y3);
+  //---
+
+  // place ports and draw connections
+  placePorts();
+
+  CQGate::draw(renderer);
+}
+
+//---
+
+CQOr8Gate::
+CQOr8Gate(const QString &name) :
+ CQGate(name)
+{
+  for (int i = 0; i < 8; ++i)
+    addInputPort(CQOr8Gate::iname(i));
+
+  addOutputPort("o");
+}
+
+bool
+CQOr8Gate::
+exec()
+{
+  bool b = inputs_[0]->getValue() | inputs_[1]->getValue() |
+           inputs_[2]->getValue() | inputs_[3]->getValue() |
+           inputs_[4]->getValue() | inputs_[5]->getValue() |
+           inputs_[6]->getValue() | inputs_[7]->getValue();
+
+  if (b == outputs_[0]->getValue())
+    return false;
+
+  outputs_[0]->setValue(b);
+
+  return true;
+}
+
+void
+CQOr8Gate::
+draw(CQSchemRenderer *renderer) const
+{
+  if (! renderer->schem->isGateVisible())
+    return;
+
+  renderer->painter->setPen(penColor(renderer));
+
+  // calc coords
+  initRect(renderer);
+
+  //---
+
+  // draw gate
+  drawOr(renderer);
 
   //---
 
@@ -3468,7 +5858,7 @@ draw(CQSchemRenderer *renderer) const
   //---
 
   // draw gate
-  drawXor(renderer, px1(), py1(), px2(), py2());
+  drawXor(renderer);
 
   //---
 
@@ -3523,7 +5913,7 @@ draw(CQSchemRenderer *renderer) const
   //---
 
   // draw gate
-  renderer->painter->drawRect(prect_);
+  drawRect(renderer);
 
   //---
 
@@ -3598,7 +5988,7 @@ draw(CQSchemRenderer *renderer) const
   //---
 
   // draw gate
-  renderer->painter->drawRect(prect_);
+  drawRect(renderer);
 
   //---
 
@@ -3607,8 +5997,6 @@ draw(CQSchemRenderer *renderer) const
 
   // place port s on bottom
   placePortOnSide(inputs_[8], CQPort::Side::BOTTOM);
-
-  //---
 
   CQGate::draw(renderer);
 }
@@ -3669,7 +6057,7 @@ draw(CQSchemRenderer *renderer) const
   //---
 
   // draw gate
-  renderer->painter->drawRect(prect_);
+  drawRect(renderer);
 
   //---
 
@@ -3742,7 +6130,7 @@ draw(CQSchemRenderer *renderer) const
   //---
 
   // draw gate
-  renderer->painter->drawRect(prect_);
+  drawRect(renderer);
 
   //---
 
@@ -3812,7 +6200,7 @@ draw(CQSchemRenderer *renderer) const
   //---
 
   // draw gate
-  renderer->painter->drawRect(prect_);
+  drawRect(renderer);
 
   //---
 
@@ -3880,7 +6268,7 @@ draw(CQSchemRenderer *renderer) const
   //---
 
   // draw gate
-  renderer->painter->drawRect(prect_);
+  drawRect(renderer);
 
   //---
 
@@ -3947,7 +6335,7 @@ draw(CQSchemRenderer *renderer) const
   //---
 
   // draw gate
-  renderer->painter->drawRect(prect_);
+  drawRect(renderer);
 
   //---
 
@@ -4018,7 +6406,7 @@ draw(CQSchemRenderer *renderer) const
   //---
 
   // draw gate
-  renderer->painter->drawRect(prect_);
+  drawRect(renderer);
 
   //---
 
@@ -4036,7 +6424,7 @@ CQAdderGate(const QString &name) :
 {
   addInputPorts(QStringList() << "a" << "b" << "carry_in");
 
-  addOutputPorts(QStringList() << "carry_out" << "sum");
+  addOutputPorts(QStringList() << "sum" << "carry_out");
 }
 
 bool
@@ -4054,9 +6442,9 @@ exec()
 
   bool changed = false;
 
-  if (co != outputs_[0]->getValue() || sum != outputs_[1]->getValue()) {
-    outputs_[0]->setValue(co);
-    outputs_[1]->setValue(sum);
+  if (sum != outputs_[0]->getValue() || co != outputs_[1]->getValue()) {
+    outputs_[0]->setValue(sum);
+    outputs_[1]->setValue(co);
 
     changed = true;
   }
@@ -4073,64 +6461,565 @@ draw(CQSchemRenderer *renderer) const
 
   renderer->painter->setPen(penColor(renderer));
 
-  auto mapX = [&](double x) {
-    return renderer->windowToPixel(QPointF(x*rect_.width () + rect_.x(), 0.0)).x(); };
-  auto mapY = [&](double y) {
-    return renderer->windowToPixel(QPointF(0.0, y*rect_.height() + rect_.y())).y(); };
+  // calc coords
+  initRect(renderer);
 
   //---
 
   // draw gate
-  double x1 = mapX(xmargin());
-  double x2 = mapX(1.0 - xmargin());
-  double y1 = mapY(ymargin());
-  double y2 = mapY(1.0 - ymargin());
-
-  prect_ = QRectF(x1, y2, x2 - x1, y1 - y2);
-
-  double ym = (y1 + y2)/2.0;
-  double xm = (x1 + x2)/2.0;
-
-  double ym1 = (y1 + ym)/2.0;
-  double ym2 = (y2 + ym)/2.0;
-
-  double xm1 = (x1 + xm)/2.0;
-
-  QPainterPath path;
-
-  path.moveTo(x1 , y1 );
-  path.lineTo(x1 , ym1);
-  path.lineTo(xm1, ym );
-  path.lineTo(x1 , ym2);
-  path.lineTo(x1 , y2);
-  path.lineTo(x2 , ym2);
-  path.lineTo(x2 , ym1);
-
-  path.closeSubpath();
-
-  renderer->painter->strokePath(path, renderer->painter->pen());
-
-  //renderer->painter->drawRect(prect_);
+  drawAdder(renderer);
 
   //---
 
-  // draw input connections (a, b, carry_in)
-  CQPort *cona  = getPortByName("a");
-  CQPort *conb  = getPortByName("b");
-  CQPort *conci = getPortByName("carry_in");
+  // place ports and draw connections
+  placePorts(2, 1);
 
-  cona ->setPixelPos(QPointF(x1, (y1 + ym1)/2));
-  conb ->setPixelPos(QPointF(x1, (y2 + ym2)/2));
-  conci->setPixelPos(QPointF(xm, (y2 + ym2)/2)); conci->setSide(CQPort::Side::BOTTOM);
+  // place ports carry_in on top
+  placePortOnSide(inputs_[2], CQPort::Side::BOTTOM);
 
-  // draw output connections (carry_out, sum)
-  CQPort *conco = getPortByName("carry_out");
-  CQPort *cons  = getPortByName("sum");
+  // place ports carry_in on top
+  placePortOnSide(outputs_[1], CQPort::Side::TOP);
 
-  conco->setPixelPos(QPointF(xm, (y1 + ym1)/2)); conco->setSide(CQPort::Side::TOP);
-  cons ->setPixelPos(QPointF(x2, ym));
+  CQGate::draw(renderer);
+}
+
+//---
+
+CQAdder8Gate::
+CQAdder8Gate(const QString &name) :
+ CQGate(name)
+{
+  for (int i = 0; i < 8; ++i)
+    addInputPort(CQAdder8Gate::aname(i));
+
+  for (int i = 0; i < 8; ++i)
+    addInputPort(CQAdder8Gate::bname(i));
+
+  addInputPort("carry_in");
+
+  for (int i = 0; i < 8; ++i)
+    addOutputPort(CQAdder8Gate::cname(i));
+
+  addOutputPort("carry_out");
+}
+
+bool
+CQAdder8Gate::
+exec()
+{
+  bool ci = inputs_[16]->getValue();
+  bool co = 0;
+
+  bool changed = false;
+
+  for (int i = 0; i < 8; ++i) {
+    bool a = inputs_[i + 0]->getValue();
+    bool b = inputs_[i + 8]->getValue();
+
+    int ab = int(a) + int(b) + int(ci);
+
+    bool sum = (ab & 1);
+
+    co = (ab > 1);
+
+    if (sum != outputs_[i]->getValue()) {
+      outputs_[i]->setValue(sum);
+
+      changed = true;
+    }
+
+    ci = co;
+  }
+
+  if (co != outputs_[8]->getValue()) {
+    outputs_[8]->setValue(co);
+
+    changed = true;
+  }
+
+  return changed;
+}
+
+void
+CQAdder8Gate::
+draw(CQSchemRenderer *renderer) const
+{
+  if (! renderer->schem->isGateVisible())
+    return;
+
+  renderer->painter->setPen(penColor(renderer));
+
+  // calc coords
+  initRect(renderer);
 
   //---
+
+  // draw gate
+  drawAdder(renderer);
+
+  //---
+
+  // place ports and draw connections
+  placePorts(16, 8);
+
+  // place ports carry_in on bottom
+  placePortOnSide(inputs_[16], CQPort::Side::BOTTOM);
+
+  // place ports carry_in on top
+  placePortOnSide(outputs_[8], CQPort::Side::TOP);
+
+  CQGate::draw(renderer);
+}
+
+//---
+
+CQComparatorGate::
+CQComparatorGate(const QString &name) :
+ CQGate(name)
+{
+  addInputPorts(QStringList() << "a" << "b");
+
+  addOutputPorts(QStringList() << "c" << "a_larger" << "equal");
+}
+
+bool
+CQComparatorGate::
+exec()
+{
+  bool a = inputs_[0]->getValue();
+  bool b = inputs_[1]->getValue();
+
+  bool c        = (a != b);
+  bool a_larger = (a >  b);
+  bool equal    = (a == b);
+
+  bool changed = false;
+
+  if (c        != outputs_[0]->getValue() ||
+      a_larger != outputs_[1]->getValue() ||
+      equal    != outputs_[2]->getValue()) {
+    outputs_[0]->setValue(c);
+    outputs_[1]->setValue(a_larger);
+    outputs_[2]->setValue(equal);
+
+    changed = true;
+  }
+
+  return changed;
+}
+
+void
+CQComparatorGate::
+draw(CQSchemRenderer *renderer) const
+{
+  if (! renderer->schem->isGateVisible())
+    return;
+
+  renderer->painter->setPen(penColor(renderer));
+
+  // calc coords
+  initRect(renderer);
+
+  //---
+
+  // draw gate
+  drawXor(renderer);
+
+  //---
+
+  // place ports and draw connections
+  placePorts(2, 1);
+
+  // place ports carry_in on top
+  placePortsOnSide(const_cast<CQPort **>(&outputs_[1]), 2, CQPort::Side::TOP);
+
+  CQGate::draw(renderer);
+}
+
+//---
+
+CQComparator8Gate::
+CQComparator8Gate(const QString &name) :
+ CQGate(name)
+{
+  for (int i = 0; i < 8; ++i)
+    addInputPort(CQAdder8Gate::aname(i));
+
+  for (int i = 0; i < 8; ++i)
+    addInputPort(CQAdder8Gate::bname(i));
+
+  for (int i = 0; i < 8; ++i)
+    addOutputPort(CQAdder8Gate::cname(i));
+
+  addOutputPorts(QStringList() << "a_larger" << "equal");
+}
+
+bool
+CQComparator8Gate::
+exec()
+{
+  int a = 0;
+  int b = 0;
+
+  int c[8];
+
+  for (int i = 0; i < 8; ++i) {
+    bool a1 = inputs_[i + 0]->getValue();
+    bool b1 = inputs_[i + 8]->getValue();
+
+    a |= (a1 << i);
+    b |= (b1 << i);
+
+    c[i] = (a1 != b1);
+  }
+
+  bool a_larger = (a >  b);
+  bool equal    = (a == b);
+
+  bool changed = false;
+
+  for (int i = 0; i < 8; ++i) {
+    if (c[i] != outputs_[i]->getValue()) {
+      outputs_[i]->setValue(c);
+
+      changed = true;
+    }
+  }
+
+  if (a_larger != outputs_[8]->getValue() ||
+      equal    != outputs_[9]->getValue()) {
+    outputs_[8]->setValue(a_larger);
+    outputs_[9]->setValue(equal);
+
+    changed = true;
+  }
+
+  return changed;
+}
+
+void
+CQComparator8Gate::
+draw(CQSchemRenderer *renderer) const
+{
+  if (! renderer->schem->isGateVisible())
+    return;
+
+  renderer->painter->setPen(penColor(renderer));
+
+  // calc coords
+  initRect(renderer);
+
+  //---
+
+  // draw gate
+  drawXor(renderer);
+
+  //---
+
+  // place ports and draw connections
+  placePorts(16, 8);
+
+  // place ports carry_in on top
+  placePortsOnSide(const_cast<CQPort **>(&outputs_[8]), 2, CQPort::Side::TOP);
+
+  CQGate::draw(renderer);
+}
+
+//---
+
+CQBus0Gate::
+CQBus0Gate(const QString &name) :
+ CQGate(name)
+{
+  for (int i = 0; i < 8; ++i)
+    addInputPort(CQBus0Gate::iname(i));
+
+  addOutputPort("zero");
+}
+
+bool
+CQBus0Gate::
+exec()
+{
+  bool o = true;
+
+  for (int i = 0; i < 8; ++i) {
+    if (inputs_[i]->getValue()) {
+      o = false;
+      break;
+    }
+  }
+
+  bool changed = false;
+
+  if (o != outputs_[0]->getValue()) {
+    outputs_[0]->setValue(o);
+
+    changed = true;
+  }
+
+  return changed;
+}
+
+void
+CQBus0Gate::
+draw(CQSchemRenderer *renderer) const
+{
+  if (! renderer->schem->isGateVisible())
+    return;
+
+  renderer->painter->setPen(penColor(renderer));
+
+  // calc coords
+  initRect(renderer);
+
+  //---
+
+  // draw gate
+  drawRect(renderer);
+
+  //---
+
+  // place ports and draw connections
+  placePorts();
+
+  CQGate::draw(renderer);
+}
+
+//---
+
+CQBus1Gate::
+CQBus1Gate(const QString &name) :
+ CQGate(name)
+{
+  for (int i = 0; i < 8; ++i)
+    addInputPort(CQBus1Gate::iname(i));
+
+  addInputPort("bus1");
+
+  for (int i = 0; i < 8; ++i)
+    addOutputPort(CQBus1Gate::oname(i));
+}
+
+bool
+CQBus1Gate::
+exec()
+{
+  bool bus1 = inputs_[8]->getValue();
+
+  bool o[8];
+
+  if (bus1) {
+    for (int i = 0; i < 8; ++i)
+      o[i] = (i == 0);
+  }
+  else {
+    for (int i = 0; i < 8; ++i)
+      o[i] = inputs_[i]->getValue();
+  }
+
+  bool changed = false;
+
+  for (int i = 0; i < 8; ++i) {
+    if (o[i] != outputs_[i]->getValue()) {
+      outputs_[i]->setValue(o[i]);
+
+      changed = true;
+    }
+  }
+
+  return changed;
+}
+
+void
+CQBus1Gate::
+draw(CQSchemRenderer *renderer) const
+{
+  if (! renderer->schem->isGateVisible())
+    return;
+
+  renderer->painter->setPen(penColor(renderer));
+
+  // calc coords
+  initRect(renderer);
+
+  //---
+
+  // draw gate
+  drawRect(renderer);
+
+  //---
+
+  // place ports and draw connections
+  placePorts();
+
+  CQGate::draw(renderer);
+}
+
+//---
+
+CQAluGate::
+CQAluGate(const QString &name) :
+ CQGate(name)
+{
+  for (int i = 0; i < 8; ++i)
+    addInputPort(CQAluGate::aname(i));
+
+  for (int i = 0; i < 8; ++i)
+    addInputPort(CQAluGate::bname(i));
+
+  addInputPort("carry_in");
+
+  for (int i = 0; i < 3; ++i)
+    addInputPort(CQAluGate::opname(i));
+
+  for (int i = 0; i < 8; ++i)
+    addOutputPort(CQAluGate::cname(i));
+
+  addOutputPort("carry_out");
+  addOutputPort("a_larger");
+  addOutputPort("equal");
+  addOutputPort("zero");
+}
+
+bool
+CQAluGate::
+exec()
+{
+  bool a[8], b[8];
+
+  for (int i = 0; i < 8; ++i) {
+    a[i] = inputs_[i + 0]->getValue();
+    b[i] = inputs_[i + 8]->getValue();
+  }
+
+  bool carry_in = inputs_[16]->getValue();
+
+  int op = 0;
+
+  for (int i = 0; i < 3; ++i)
+    op |= (inputs_[17 + i]->getValue() << i);
+
+  //---
+
+  bool c[8];
+
+  bool carry_out = false;
+  bool a_larger  = false;
+  bool equal     = false;
+
+  if      (op == 0) { // Add
+    for (int i = 0; i < 8; ++i) {
+      int ab = int(a[i]) + int(b[i]) + int(carry_in);
+
+      c[i]      = (ab & 1);
+      carry_out = (ab > 1);
+
+      carry_in = carry_out;
+    }
+  }
+  else if (op == 1) { // Shift Right
+    for (int i = 0; i < 8; ++i) {
+      if (i == 0)
+        carry_out = a[i];
+      else
+        c[i - 1] = a[i];
+    }
+
+    c[7] = carry_in;
+  }
+  else if (op == 2) { // Shift Left
+    for (int i = 0; i < 8; ++i) {
+      if (i == 7)
+        carry_out = a[i];
+      else
+        c[i + 1] = a[i];
+    }
+
+    c[0] = carry_in;
+  }
+  else if (op == 3) { // Not
+    for (int i = 0; i < 8; ++i)
+      c[i] = ! a[i];
+  }
+  else if (op == 4) { // And
+    for (int i = 0; i < 8; ++i)
+      c[i] = a[i] & b[i];
+  }
+  else if (op == 5) { // Or
+    for (int i = 0; i < 8; ++i)
+      c[i] = a[i] | b[i];
+  }
+  else if (op == 6) { // Exclusive Or
+    for (int i = 0; i < 8; ++i)
+      c[i] = a[i] ^ b[i];
+  }
+  else if (op == 7) { // Compare
+    int a1 = 0;
+    int b1 = 0;
+
+    for (int i = 0; i < 8; ++i) {
+      a1 |= (a[i] << i);
+      b1 |= (b[i] << i);
+
+      c[i] = (a[i] != b[i]);
+    }
+
+    a_larger = (a1 >  b1);
+    equal    = (a1 == b1);
+  }
+
+  bool zero = true;
+
+  for (int i = 0; i < 8; ++i) {
+    if (c[i] != 0) {
+      zero = false;
+      break;
+    }
+  }
+
+  bool changed = false;
+
+  auto setOutput = [&](int i, bool b) {
+    if (b != outputs_[i]->getValue()) {
+      outputs_[i]->setValue(b);
+
+      changed = true;
+    }
+  };
+
+  for (int i = 0; i < 8; ++i)
+    setOutput(i, c[i]);
+
+  setOutput( 8, carry_out);
+  setOutput( 9, a_larger );
+  setOutput(10, equal    );
+  setOutput(11, zero     );
+
+  return changed;
+}
+
+void
+CQAluGate::
+draw(CQSchemRenderer *renderer) const
+{
+  if (! renderer->schem->isGateVisible())
+    return;
+
+  renderer->painter->setPen(penColor(renderer));
+
+  // calc coords
+  initRect(renderer);
+
+  //---
+
+  // draw gate
+  drawRect(renderer);
+
+  //---
+
+  // place ports and draw connections
+  placePorts();
 
   CQGate::draw(renderer);
 }
@@ -4241,7 +7130,9 @@ draw(CQSchemRenderer *renderer) const
 
   path.closeSubpath();
 
-  renderer->painter->strokePath(path, renderer->painter->pen());
+  renderer->painter->setBrush(renderer->gateFillColor);
+
+  renderer->painter->drawPath(path);
 
   //---
 
@@ -4266,14 +7157,14 @@ CQRShiftGate(const QString &name) :
   w_ = 0.5;
   h_ = 1.0;
 
-  addInputPort("shift_in");
+  addOutputPort("shift_out");
 
   for (int i = 0; i < 8; ++i) {
     addInputPort (iname(i));
     addOutputPort(oname(i));
   }
 
-  addOutputPort("shift_out");
+  addInputPort("shift_in");
 
   addInputPorts(QStringList() << "s" << "e");
 }
@@ -4287,36 +7178,36 @@ exec()
 
   bool ov[8];
 
-  ov[7] = inputs_[0]->getValue(); // shift_in
-
-  bool so = inputs_[1]->getValue();
+  bool so = inputs_[0]->getValue(); // bit 0
 
   for (int i = 0; i < 7; ++i)
-    ov[i] = inputs_[i + 2]->getValue();
+    ov[i] = inputs_[i + 1]->getValue(); // bit 1-7
+
+  ov[7] = inputs_[8]->getValue(); // shift_in
 
   bool changed = false;
 
   for (int i = 0; i < 8; ++i) {
     if (s)
-      state_[i] = ov[i];
+      state_[i + 1] = ov[i];
 
-    bool iv = (e ? state_[i] : false);
+    bool iv = (e ? state_[i + 1] : false);
 
-    if (iv != outputs_[i]->getValue()) {
-      outputs_[i]->setValue(iv);
+    if (iv != outputs_[i + 1]->getValue()) {
+      outputs_[i + 1]->setValue(iv);
 
       changed = true;
     }
   }
 
-  if (so != outputs_[8]->getValue()) {
+  if (so != outputs_[0]->getValue()) {
     if (s)
-      state_[8] = so;
+      state_[0] = so;
 
-    bool iv = (e ? state_[8] : false);
+    bool iv = (e ? state_[0] : false);
 
-    if (iv != outputs_[8]->getValue()) {
-      outputs_[8]->setValue(iv);
+    if (iv != outputs_[0]->getValue()) {
+      outputs_[0]->setValue(iv);
 
       changed = true;
     }
@@ -4363,7 +7254,9 @@ draw(CQSchemRenderer *renderer) const
 
   path.closeSubpath();
 
-  renderer->painter->strokePath(path, renderer->painter->pen());
+  renderer->painter->setBrush(renderer->gateFillColor);
+
+  renderer->painter->drawPath(path);
 
   //---
 
@@ -4375,6 +7268,262 @@ draw(CQSchemRenderer *renderer) const
 
   // place ports s and e on bottom
   placePortsOnSide(const_cast<CQPort **>(&inputs_[9]), 2, CQPort::Side::BOTTOM);
+
+  CQGate::draw(renderer);
+}
+
+//---
+
+CQInverterGate::
+CQInverterGate(const QString &name) :
+ CQGate(name)
+{
+  w_ = 0.5;
+  h_ = 0.5;
+
+  for (int i = 0; i < 8; ++i) {
+    addInputPort (iname(i));
+    addOutputPort(oname(i));
+  }
+}
+
+bool
+CQInverterGate::
+exec()
+{
+  bool ov[8];
+
+  for (int i = 0; i < 8; ++i)
+    ov[i] = ! inputs_[i]->getValue();
+
+  bool changed = false;
+
+  for (int i = 0; i < 8; ++i) {
+    if (ov[i] != outputs_[i]->getValue()) {
+      outputs_[i]->setValue(ov[i]);
+
+      changed = true;
+    }
+  }
+
+  return changed;
+}
+
+void
+CQInverterGate::
+draw(CQSchemRenderer *renderer) const
+{
+  if (! renderer->schem->isGateVisible())
+    return;
+
+  renderer->painter->setPen(penColor(renderer));
+
+  // calc coords
+  initRect(renderer);
+
+  //---
+
+  // draw gate
+  drawNot(renderer);
+
+  drawNotIndicator(renderer);
+
+  //---
+
+  // place ports and draw connections
+  placePorts();
+
+  CQGate::draw(renderer);
+}
+
+//---
+
+CQAnderGate::
+CQAnderGate(const QString &name) :
+ CQGate(name)
+{
+  w_ = 0.5;
+  h_ = 0.5;
+
+  for (int i = 0; i < 8; ++i) {
+    addInputPort (aname(i));
+    addInputPort (bname(i));
+    addOutputPort(cname(i));
+  }
+}
+
+bool
+CQAnderGate::
+exec()
+{
+  bool ov[8];
+
+  for (int i = 0; i < 8; ++i)
+    ov[i] = inputs_[2*i + 0]->getValue() & inputs_[2*i + 1]->getValue();
+
+  bool changed = false;
+
+  for (int i = 0; i < 8; ++i) {
+    if (ov[i] != outputs_[i]->getValue()) {
+      outputs_[i]->setValue(ov[i]);
+
+      changed = true;
+    }
+  }
+
+  return changed;
+}
+
+void
+CQAnderGate::
+draw(CQSchemRenderer *renderer) const
+{
+  if (! renderer->schem->isGateVisible())
+    return;
+
+  renderer->painter->setPen(penColor(renderer));
+
+  // calc coords
+  initRect(renderer);
+
+  //---
+
+  // draw gate
+  drawAnd(renderer);
+
+  //---
+
+  // place ports and draw connections
+  placePorts();
+
+  CQGate::draw(renderer);
+}
+
+//---
+
+CQOrerGate::
+CQOrerGate(const QString &name) :
+ CQGate(name)
+{
+  w_ = 0.5;
+  h_ = 0.5;
+
+  for (int i = 0; i < 8; ++i) {
+    addInputPort (aname(i));
+    addInputPort (bname(i));
+    addOutputPort(cname(i));
+  }
+}
+
+bool
+CQOrerGate::
+exec()
+{
+  bool ov[8];
+
+  for (int i = 0; i < 8; ++i)
+    ov[i] = inputs_[2*i + 0]->getValue() | inputs_[2*i + 1]->getValue();
+
+  bool changed = false;
+
+  for (int i = 0; i < 8; ++i) {
+    if (ov[i] != outputs_[i]->getValue()) {
+      outputs_[i]->setValue(ov[i]);
+
+      changed = true;
+    }
+  }
+
+  return changed;
+}
+
+void
+CQOrerGate::
+draw(CQSchemRenderer *renderer) const
+{
+  if (! renderer->schem->isGateVisible())
+    return;
+
+  renderer->painter->setPen(penColor(renderer));
+
+  // calc coords
+  initRect(renderer);
+
+  //---
+
+  // draw gate
+  drawOr(renderer);
+
+  //---
+
+  // place ports and draw connections
+  placePorts();
+
+  CQGate::draw(renderer);
+}
+
+//---
+
+CQXorerGate::
+CQXorerGate(const QString &name) :
+ CQGate(name)
+{
+  w_ = 0.5;
+  h_ = 0.5;
+
+  for (int i = 0; i < 8; ++i) {
+    addInputPort (aname(i));
+    addInputPort (bname(i));
+    addOutputPort(cname(i));
+  }
+}
+
+bool
+CQXorerGate::
+exec()
+{
+  bool ov[8];
+
+  for (int i = 0; i < 8; ++i)
+    ov[i] = inputs_[2*i + 0]->getValue() ^ inputs_[2*i + 1]->getValue();
+
+  bool changed = false;
+
+  auto setOutput = [&](int i, bool b) {
+    if (b != outputs_[i]->getValue()) {
+      outputs_[i]->setValue(b);
+
+      changed = true;
+    }
+  };
+
+  for (int i = 0; i < 8; ++i)
+    setOutput(i, ov[i]);
+
+  return changed;
+}
+
+void
+CQXorerGate::
+draw(CQSchemRenderer *renderer) const
+{
+  if (! renderer->schem->isGateVisible())
+    return;
+
+  renderer->painter->setPen(penColor(renderer));
+
+  // calc coords
+  initRect(renderer);
+
+  //---
+
+  // draw gate
+  drawXor(renderer);
+
+  //---
+
+  // place ports and draw connections
+  placePorts();
 
   CQGate::draw(renderer);
 }
@@ -4446,6 +7595,54 @@ setValue(bool b)
   // propagate to output
   for (auto &oport : outPorts())
     oport->setValue(getValue(), false);
+}
+
+bool
+CQConnection::
+isLR() const
+{
+  CQPort::Side side { CQPort::Side::NONE };
+
+  if      (! inPorts_ .empty())
+    side = inPorts_ [0]->side();
+  else if (! outPorts_.empty())
+    side = outPorts_[0]->side();
+  else
+    return true;
+
+  return (side == CQPort::Side::LEFT || side == CQPort::Side::RIGHT);
+}
+
+bool
+CQConnection::
+isLeft() const
+{
+  CQPort::Side side { CQPort::Side::NONE };
+
+  if      (! inPorts_ .empty())
+    side = inPorts_ [0]->side();
+  else if (! outPorts_.empty())
+    side = outPorts_[0]->side();
+  else
+    return true;
+
+  return (side == CQPort::Side::LEFT);
+}
+
+bool
+CQConnection::
+isTop() const
+{
+  CQPort::Side side { CQPort::Side::NONE };
+
+  if      (! inPorts_ .empty())
+    side = inPorts_ [0]->side();
+  else if (! outPorts_.empty())
+    side = outPorts_[0]->side();
+  else
+    return true;
+
+  return (side == CQPort::Side::TOP);
 }
 
 bool
@@ -4620,8 +7817,8 @@ addConnectLines(const QPointF &p1, const QPointF &p2,
   double dxe = std::abs(p4.x() - p3.x());
   double dye = std::abs(p4.y() - p3.y());
 
-  double dx = std::abs(p3.x() - p2.x());
-  double dy = std::abs(p3.y() - p2.y());
+  double dx = std::abs(p4.x() - p1.x());
+  double dy = std::abs(p4.y() - p1.y());
 
   double xm = (p2.x() + p3.x())/2.0;
   double ym = (p2.y() + p3.y())/2.0;
@@ -4650,8 +7847,9 @@ addConnectLines(const QPointF &p1, const QPointF &p2,
       addLine(p6 , p31);
       addLine(p31, p4 );
     }
-    else
+    else {
       addLine(p1, p4);
+    }
   }
   else {
     if (dx > 1) {
@@ -4664,8 +7862,9 @@ addConnectLines(const QPointF &p1, const QPointF &p2,
       addLine(p6 , p31);
       addLine(p31, p4 );
     }
-    else
+    else {
       addLine(p1, p4);
+    }
   }
 }
 
@@ -4710,6 +7909,11 @@ void
 CQConnection::
 addLine(const QPointF &p1, const QPointF &p2) const
 {
+  double dx = std::abs(p2.x() - p1.x());
+  double dy = std::abs(p2.y() - p1.y());
+
+  assert(int(dx) <= 1 || int(dy) <= 1);
+
   int ind = lines_.size();
 
   if (p1.x() > p2.x() || (p1.x() == p2.x() && p1.y() > p2.y()))
@@ -4725,10 +7929,24 @@ drawLine(CQSchemRenderer *renderer, const QPointF &p1, const QPointF &p2,
 {
   renderer->painter->setPen(penColor(renderer));
 
-  renderer->painter->drawLine(p1, p2);
+  CQSchem::drawLine(renderer, p1, p2);
 
-  if (showText && renderer->schem->isShowConnectionText())
-    CQSchem::drawTextAtPoint(renderer, QPointF((p1.x() + p2.x())/2, (p1.y() + p2.y())/2), name());
+  if (showText && renderer->schem->isShowConnectionText()) {
+    renderer->painter->setPen(renderer->textColor);
+
+    if      (isInput() || isOutput()) {
+      if (isLR()) {
+        if (isLeft())
+          CQSchem::drawTextOnLine(renderer, p1, p2, name(), CQSchem::TextLinePos::START);
+        else
+          CQSchem::drawTextOnLine(renderer, p1, p2, name(), CQSchem::TextLinePos::END);
+      }
+      else
+        CQSchem::drawTextOnLine(renderer, p1, p2, name(), CQSchem::TextLinePos::MIDDLE);
+    }
+    else
+      CQSchem::drawTextOnLine(renderer, p1, p2, name(), CQSchem::TextLinePos::MIDDLE);
+  }
 
   if      (p1.y() == p2.y()) {
     double h = 8;
@@ -4743,6 +7961,52 @@ drawLine(CQSchemRenderer *renderer, const QPointF &p1, const QPointF &p2,
   else {
     prect_ = QRectF(p1.x(), p1.y(), p2.x(), p1.y());
   }
+}
+
+QPointF
+CQConnection::
+imidPoint() const
+{
+  int ni = inPorts_ .size();
+
+  if (ni == 0)
+    return QPointF();
+
+  double x = 0.0;
+  double y = 0.0;
+
+  for (const auto &port : inPorts_) {
+    x += port->pixelPos().x();
+    y += port->pixelPos().y();
+  }
+
+  x /= ni;
+  y /= ni;
+
+  return QPointF(x, y);
+}
+
+QPointF
+CQConnection::
+omidPoint() const
+{
+  int no = outPorts_.size();
+
+  if (no == 0)
+    return QPointF();
+
+  double x = 0.0;
+  double y = 0.0;
+
+  for (const auto &port : outPorts_) {
+    x += port->pixelPos().x();
+    y += port->pixelPos().y();
+  }
+
+  x /= no;
+  y /= no;
+
+  return QPointF(x, y);
 }
 
 QPointF
@@ -4779,12 +8043,12 @@ CQConnection::
 penColor(CQSchemRenderer *renderer) const
 {
   if (renderer->schem->insideConnection() == this)
-    return Qt::cyan;
+    return renderer->insideColor;
 
   if (getValue())
     return Qt::green;
 
-  return (isSelected() ? Qt::yellow : Qt::white);
+  return (isSelected() ? renderer->selectColor : renderer->connectionColor);
 }
 
 //------
@@ -4800,7 +8064,7 @@ void
 CQBus::
 addConnection(CQConnection *connection, int i)
 {
-  assert(i >= 0 && i < n_);
+  assert(connection && i >= 0 && i < n_);
 
   connections_[i] = connection;
 
@@ -4847,35 +8111,235 @@ draw(CQSchemRenderer *renderer)
   //---
 
   // calc bus connections min, max and mid points
-  double x1 = 0.0, y1 = 0.0;
-  double x2 = 0.0, y2 = 0.0;
-  double yc = 0.0, xc = 0.0;
+  double xi1 = 0.0, yi1 = 0.0;
+  double xi2 = 0.0, yi2 = 0.0;
+  double xis = 0.0, yis = 0.0;
+  double xie = 0.0, yie = 0.0;
+  double xim = 0.0, yim = 0.0;
+
+  double xo1 = 0.0, yo1 = 0.0;
+  double xo2 = 0.0, yo2 = 0.0;
+  double xos = 0.0, yos = 0.0;
+  double xoe = 0.0, yoe = 0.0;
+  double xom = 0.0, yom = 0.0;
+
+  int ni = 0, no = 0;
 
   for (int i = 0; i < n_; ++i) {
-    QPointF p = connections_[i]->midPoint();
+    if (! connections_[i]->isOutput()) {
+      QPointF p = connections_[i]->omidPoint();
 
-    x1 = (i == 0 ? p.x() : std::min(x1, p.x()));
-    y1 = (i == 0 ? p.y() : std::min(y1, p.y()));
-    x2 = (i == 0 ? p.x() : std::max(x2, p.x()));
-    y2 = (i == 0 ? p.y() : std::max(y2, p.y()));
+      xi1 = (i == 0 ? p.x() : std::min(xi1, p.x()));
+      yi1 = (i == 0 ? p.y() : std::min(yi1, p.y()));
+      xi2 = (i == 0 ? p.x() : std::max(xi2, p.x()));
+      yi2 = (i == 0 ? p.y() : std::max(yi2, p.y()));
 
-    if      (position() == CQBus::Position::START) {
-      xc = (i == 0 ? p.x() : std::min(xc, p.x()));
-      yc = (i == 0 ? p.y() : std::min(yc, p.y()));
+      xis = (i == 0 ? p.x() : std::min(xis, p.x()));
+      yis = (i == 0 ? p.y() : std::min(yis, p.y()));
+
+      xie = (i == 0 ? p.x() : std::max(xie, p.x()));
+      yie = (i == 0 ? p.y() : std::max(yie, p.y()));
+
+      xim += p.x();
+      yim += p.y();
+
+      ++ni;
     }
-    else if (position() == CQBus::Position::END) {
-      xc = (i == 0 ? p.x() : std::max(xc, p.x()));
-      yc = (i == 0 ? p.y() : std::max(yc, p.y()));
-    }
-    else {
-      xc += p.x();
-      yc += p.y();
+
+    if (! connections_[i]->isInput()) {
+      QPointF p = connections_[i]->imidPoint();
+
+      xo1 = (i == 0 ? p.x() : std::min(xo1, p.x()));
+      yo1 = (i == 0 ? p.y() : std::min(yo1, p.y()));
+      xo2 = (i == 0 ? p.x() : std::max(xo2, p.x()));
+      yo2 = (i == 0 ? p.y() : std::max(yo2, p.y()));
+
+      xos = (i == 0 ? p.x() : std::min(xos, p.x()));
+      yos = (i == 0 ? p.y() : std::min(yos, p.y()));
+
+      xoe = (i == 0 ? p.x() : std::max(xoe, p.x()));
+      yoe = (i == 0 ? p.y() : std::max(yoe, p.y()));
+
+      xom += p.x();
+      yom += p.y();
+
+      ++no;
     }
   }
 
-  if (position() == CQBus::Position::MIDDLE) {
-    xc /= n_;
-    yc /= n_;
+  double xic, yic, xoc, yoc;
+
+  if      (position() == CQBus::Position::START) {
+    xic = xis + offset()*(xie - xis);
+    yic = yis + offset()*(yie - yis);
+
+    xoc = xos + offset()*(xoe - xis);
+    yoc = yos + offset()*(yoe - yis);
+  }
+  else if (position() == CQBus::Position::END) {
+    xic = xie + offset()*(xie - xis);
+    yic = yie + offset()*(yie - yis);
+
+    xoc = xoe + offset()*(xoe - xis);
+    yoc = yoe + offset()*(yoe - yis);
+  }
+  else {
+    if (ni > 0) {
+      xim /= ni;
+      yim /= ni;
+    }
+
+    if (no > 0) {
+      xom /= no;
+      yom /= no;
+    }
+
+    xic = xim;
+    yic = yim;
+
+    xoc = xom;
+    yoc = yom;
+  }
+
+  //---
+
+  if (renderer->schem->isCollapseBus()) {
+    if      (ni > 0 && no == 0) {
+      CQPort::Side side = connections_[0]->outPorts()[0]->side();
+
+      bool lr = connections_[0]->isLR();
+
+      QPointF p1, p2;
+
+      if (lr) {
+        double dw = mapWidth(renderer->placementRect.width()/2.0);
+
+        if (side == CQPort::Side::LEFT) {
+          p1 = QPointF(xi1 - dw, yic);
+          p2 = QPointF(xi1     , yic);
+        }
+        else {
+          p1 = QPointF(xi2 + dw, yic);
+          p2 = QPointF(xi2     , yic);
+        }
+      }
+      else {
+        double dh = mapHeight(renderer->placementRect.height()/2.0);
+
+        if (side == CQPort::Side::TOP) {
+          p1 = QPointF(xic, yi1 - dh);
+          p2 = QPointF(xic, yi1     );
+        }
+        else {
+          p1 = QPointF(xic, yi1 + dh);
+          p2 = QPointF(xic, yi1     );
+        }
+      }
+
+      CQSchem::drawConnection(renderer, p1, p2);
+
+      if (renderer->schem->isShowConnectionText()) {
+        renderer->painter->setPen(renderer->textColor);
+
+        if (lr) {
+          if (side == CQPort::Side::LEFT)
+            CQSchem::drawTextOnLine(renderer, p1, p2, name(), CQSchem::TextLinePos::START);
+          else
+            CQSchem::drawTextOnLine(renderer, p1, p2, name(), CQSchem::TextLinePos::END);
+        }
+        else
+          CQSchem::drawTextOnLine(renderer, p1, p2, name(), CQSchem::TextLinePos::MIDDLE);
+      }
+
+      return;
+    }
+    else if (no > 0 && ni == 0) {
+      CQPort::Side side = connections_[0]->inPorts()[0]->side();
+
+      bool lr = connections_[0]->isLR();
+
+      QPointF p1, p2;
+
+      if (lr) {
+        double dw = mapWidth(renderer->placementRect.width()/2.0);
+
+        if (side == CQPort::Side::LEFT) {
+          p1 = QPointF(xo1 - dw, yoc);
+          p2 = QPointF(xo1     , yoc);
+        }
+        else {
+          p1 = QPointF(xo2 + dw, yoc);
+          p2 = QPointF(xo2     , yoc);
+        }
+      }
+      else {
+        double dh = mapHeight(renderer->placementRect.height()/2.0);
+
+        if (side == CQPort::Side::TOP) {
+          p1 = QPointF(xoc, yo1 - dh);
+          p2 = QPointF(xoc, yo1     );
+        }
+        else {
+          p1 = QPointF(xoc, yo1 + dh);
+          p2 = QPointF(xoc, yo1     );
+        }
+      }
+
+      CQSchem::drawConnection(renderer, p1, p2);
+
+      if (renderer->schem->isShowConnectionText()) {
+        renderer->painter->setPen(renderer->textColor);
+
+        if (lr) {
+          if (side == CQPort::Side::LEFT)
+            CQSchem::drawTextOnLine(renderer, p1, p2, name(), CQSchem::TextLinePos::START);
+          else
+            CQSchem::drawTextOnLine(renderer, p1, p2, name(), CQSchem::TextLinePos::END);
+        }
+        else
+          CQSchem::drawTextOnLine(renderer, p1, p2, name(), CQSchem::TextLinePos::MIDDLE);
+      }
+
+      return;
+    }
+    else if (ni > 0 && no > 0) {
+      CQPort::Side iside = connections_[0]->inPorts ()[0]->side();
+      CQPort::Side oside = connections_[0]->outPorts()[0]->side();
+
+      bool ilr = (iside == CQPort::Side::LEFT || iside == CQPort::Side::RIGHT);
+      bool olr = (oside == CQPort::Side::LEFT || oside == CQPort::Side::RIGHT);
+
+      QPointF p1, p2;
+
+      if (ilr) {
+        if (iside == CQPort::Side::LEFT) p1 = QPointF(xo1, yoc);
+        else                             p1 = QPointF(xo2, yoc);
+      }
+      else {
+        if (iside == CQPort::Side::TOP ) p1 = QPointF(xoc, yo1);
+        else                             p1 = QPointF(xoc, yo1);
+      }
+
+      if (olr) {
+        if (iside == CQPort::Side::LEFT) p2 = QPointF(xi1, yic);
+        else                             p2 = QPointF(xi2, yic);
+      }
+      else {
+        if (iside == CQPort::Side::TOP ) p2 = QPointF(xic, yi1);
+        else                             p2 = QPointF(xic, yi1);
+      }
+
+      CQSchem::drawConnection(renderer, p1, p2);
+
+      if (renderer->schem->isShowConnectionText()) {
+        renderer->painter->setPen(renderer->textColor);
+
+        CQSchem::drawTextAtPoint(renderer,
+          QPointF((p1.x() + p2.x())/2, (p1.y() + p2.y())/2), name());
+      }
+
+      return;
+    }
   }
 
   //---
@@ -4883,24 +8347,37 @@ draw(CQSchemRenderer *renderer)
   if      (input) {
     CQPort::Side side = connections_[0]->outPorts()[0]->side();
 
-    bool lr = (side == CQPort::Side::LEFT || side == CQPort::Side::RIGHT);
+    bool lr = connections_[0]->isLR();
 
-    double dx = (lr ? mapWidth (0.25) : mapWidth (0.03));
-    double dy = (lr ? mapHeight(0.03) : mapHeight(0.25));
+    double dx = (lr ? mapWidth (renderer->placementRect.width ()/2.0) :
+                      mapWidth (renderer->placementRect.width ()/32.0));
+    double dy = (lr ? mapHeight(renderer->placementRect.height()/32.0) :
+                      mapHeight(renderer->placementRect.height()/2.0));
 
     QPointF p1;
 
+    bool flipped = isFlipped();
+
+    if (gate() && gate()->isFlipped())
+      flipped = ! flipped;
+
     if (lr) {
+      if (flipped)
+        dy = -dy;
+
       if (side == CQPort::Side::LEFT)
-        p1 = QPointF(x1 - dx, yc - n_*dy/2.0);
+        p1 = QPointF(xi1 - dx, yic - n_*dy/2.0);
       else
-        p1 = QPointF(x2 + dx, yc + n_*dy/2.0);
+        p1 = QPointF(xi2 + dx, yic + n_*dy/2.0);
     }
     else {
+      if (flipped)
+        dx = -dx;
+
       if (side == CQPort::Side::TOP)
-        p1 = QPointF(xc + n_*dx/2.0, y1 - dy);
+        p1 = QPointF(xic + n_*dx/2.0, yi1 - dy);
       else
-        p1 = QPointF(xc - n_*dx/2.0, y2 + dy);
+        p1 = QPointF(xic - n_*dx/2.0, yi2 + dy);
     }
 
     // count number above, below
@@ -4910,12 +8387,12 @@ draw(CQSchemRenderer *renderer)
       QPointF p2 = connections_[i]->midPoint();
 
       if (lr) {
-        if (p2.y() < yc) ++na;
-        else             ++nb;
+        if (p2.y() < yic) ++na;
+        else              ++nb;
       }
       else {
-        if (p2.x() < xc) ++na;
-        else             ++nb;
+        if (p2.x() < xic) ++na;
+        else              ++nb;
       }
     }
 
@@ -4932,7 +8409,7 @@ draw(CQSchemRenderer *renderer)
       if (lr) {
         double xm = (p1.x() + p2.x())/2;
 
-        if (p2.y() < yc) {
+        if (p2.y() < yic) {
           pm1 = QPointF(xm + ia*dy/2.0, p1.y());
 
           ++ia;
@@ -4948,7 +8425,7 @@ draw(CQSchemRenderer *renderer)
       else {
         double ym = (p1.y() + p2.y())/2;
 
-        if (p2.x() < xc) {
+        if (p2.x() < xic) {
           pm1 = QPointF(p1.x(), ym - ia*dx/2.0);
 
           ++ia;
@@ -4962,16 +8439,19 @@ draw(CQSchemRenderer *renderer)
         pm2 = QPointF(p2.x(), pm1.y());
       }
 
-      renderer->painter->drawLine(p1 , pm1);
-      renderer->painter->drawLine(pm1, pm2);
-      renderer->painter->drawLine(pm2, p2 );
+      CQSchem::drawLine(renderer, p1 , pm1);
+      CQSchem::drawLine(renderer, pm1, pm2);
+      CQSchem::drawLine(renderer, pm2, p2 );
 
       for (const auto &port : connections_[i]->outPorts())
         CQSchem::drawConnection(renderer, p2, port->pixelPos());
 
-      if (renderer->schem->isShowConnectionText())
-        CQSchem::drawTextAtPoint(renderer,
-          QPointF((p1.x() + pm1.x())/2, (p1.y() + pm1.y())/2), connections_[i]->name());
+      if (renderer->schem->isShowConnectionText()) {
+        renderer->painter->setPen(renderer->textColor);
+
+        CQSchem::drawTextOnLine(renderer, pm2, p2, connections_[i]->name(),
+                                CQSchem::TextLinePos::MIDDLE);
+      }
 
       connections_[i]->setPRect(QRectF(p1, p2));
 
@@ -4992,24 +8472,37 @@ draw(CQSchemRenderer *renderer)
   else if (output) {
     CQPort::Side side = connections_[0]->inPorts()[0]->side();
 
-    bool lr = (side == CQPort::Side::LEFT || side == CQPort::Side::RIGHT);
+    bool lr = connections_[0]->isLR();
 
-    double dx = (lr ? mapWidth (0.25) : mapWidth (0.03));
-    double dy = (lr ? mapHeight(0.03) : mapHeight(0.25));
+    double dx = (lr ? mapWidth (renderer->placementRect.width ()/2.0) :
+                      mapWidth (renderer->placementRect.width ()/32.0));
+    double dy = (lr ? mapHeight(renderer->placementRect.height()/32.0) :
+                      mapHeight(renderer->placementRect.height()/2.0));
 
     QPointF p1;
 
+    bool flipped = isFlipped();
+
+    if (gate() && gate()->isFlipped())
+      flipped = ! flipped;
+
     if (lr) {
+      if (flipped)
+        dy = -dy;
+
       if (side == CQPort::Side::LEFT)
-        p1 = QPointF(x1 - dx, yc + n_*dy/2.0);
+        p1 = QPointF(xo1 - dx, yoc + n_*dy/2.0);
       else
-        p1 = QPointF(x2 + dx, yc - n_*dy/2.0);
+        p1 = QPointF(xo2 + dx, yoc - n_*dy/2.0);
     }
     else {
+      if (flipped)
+        dx = -dx;
+
       if (side == CQPort::Side::TOP)
-        p1 = QPointF(xc - n_*dx/2.0, y1 - dy);
+        p1 = QPointF(xoc - n_*dx/2.0, yo1 - dy);
       else
-        p1 = QPointF(xc + n_*dx/2.0, y2 + dy);
+        p1 = QPointF(xoc + n_*dx/2.0, yo2 + dy);
     }
 
     // count number above, below
@@ -5019,12 +8512,12 @@ draw(CQSchemRenderer *renderer)
       QPointF p2 = connections_[i]->midPoint();
 
       if (lr) {
-        if (p2.y() < yc) ++na;
-        else             ++nb;
+        if (p2.y() < yoc) ++na;
+        else              ++nb;
       }
       else {
-        if (p2.x() < xc) ++na;
-        else             ++nb;
+        if (p2.x() < xoc) ++na;
+        else              ++nb;
       }
     }
 
@@ -5041,7 +8534,7 @@ draw(CQSchemRenderer *renderer)
       if (lr) {
         double xm = (p1.x() + p2.x())/2;
 
-        if (p2.y() < yc) {
+        if (p2.y() < yoc) {
           pm1 = QPointF(xm - ia*dy/2.0, p1.y());
 
           ++ia;
@@ -5057,7 +8550,7 @@ draw(CQSchemRenderer *renderer)
       else {
         double ym = (p1.y() + p2.y())/2;
 
-        if (p2.x() < xc) {
+        if (p2.x() < xoc) {
           pm1 = QPointF(p1.x(), ym + ia*dx/2.0);
 
           ++ia;
@@ -5071,16 +8564,19 @@ draw(CQSchemRenderer *renderer)
         pm2 = QPointF(p2.x(), pm1.y());
       }
 
-      renderer->painter->drawLine(p1 , pm1);
-      renderer->painter->drawLine(pm1, pm2);
-      renderer->painter->drawLine(pm2, p2 );
+      CQSchem::drawLine(renderer, p1 , pm1);
+      CQSchem::drawLine(renderer, pm1, pm2);
+      CQSchem::drawLine(renderer, pm2, p2 );
 
       for (const auto &port : connections_[i]->inPorts())
         CQSchem::drawConnection(renderer, p2, port->pixelPos());
 
-      if (renderer->schem->isShowConnectionText())
-        CQSchem::drawTextAtPoint(renderer,
-          QPointF((p1.x() + pm1.x())/2, (p1.y() + pm1.y())/2), connections_[i]->name());
+      if (renderer->schem->isShowConnectionText()) {
+        renderer->painter->setPen(renderer->textColor);
+
+        CQSchem::drawTextOnLine(renderer, pm2, p2, connections_[i]->name(),
+                                CQSchem::TextLinePos::MIDDLE);
+      }
 
       connections_[i]->setPRect(QRectF(p1, p2));
 
@@ -5112,6 +8608,13 @@ CQPlacementGroup(const Placement &placement, int nr, int nc) :
 {
 }
 
+CQPlacementGroup::
+~CQPlacementGroup()
+{
+  for (auto &placementGroup : placementGroups_)
+    delete placementGroup.placementGroup;
+}
+
 void
 CQPlacementGroup::
 setRect(const QRectF &r)
@@ -5140,6 +8643,17 @@ void
 CQPlacementGroup::
 addGate(CQGate *gate, int r, int c, int nr, int nc, Alignment alignment)
 {
+  if (placement_ == Placement::GRID) {
+    assert(r >=0 && r < nr_);
+    assert(c >=0 && c < nc_);
+
+    int r1 = r + nr - 1;
+    int c1 = c + nc - 1;
+
+    assert(r1 >=0 && r1 < nr_);
+    assert(c1 >=0 && c1 < nc_);
+  }
+
   if (gate->placementGroup())
     gate->placementGroup()->removeGate(gate);
 
@@ -5157,19 +8671,79 @@ removeGate(CQGate *gate)
   int i = 0;
   int n = gates_.size();
 
-  for (auto &gateData : gates_) {
-    if (gateData.gate == gate)
+  for ( ; i < n; ++i) {
+    if (gates_[i].gate == gate)
       break;
-
-    ++i;
   }
 
-  for ( ; i < n - 1; ++i)
-    gates_[i] = gates_[i + 1];
+  assert(i < n);
+
+  ++i;
+
+  for ( ; i < n; ++i)
+    gates_[i - 1] = gates_[i];
 
   gates_.pop_back();
 
   rectValid_ = false;
+}
+
+void
+CQPlacementGroup::
+addConnection(CQConnection *connection)
+{
+  connections_.push_back(connection);
+}
+
+void
+CQPlacementGroup::
+removeConnection(CQConnection *connection)
+{
+  int i = 0;
+  int n = connections_.size();
+
+  for ( ; i < n; ++i) {
+    if (connections_[i] == connection)
+      break;
+  }
+
+  assert(i < n);
+
+  ++i;
+
+  for ( ; i < n; ++i)
+    connections_[i - 1] = connections_[i];
+
+  connections_.pop_back();
+}
+
+void
+CQPlacementGroup::
+addBus(CQBus *bus)
+{
+  buses_.push_back(bus);
+}
+
+void
+CQPlacementGroup::
+removeBus(CQBus *bus)
+{
+  int i = 0;
+  int n = buses_.size();
+
+  for ( ; i < n; ++i) {
+    if (buses_[i] == bus)
+      break;
+  }
+
+  assert(i < n);
+
+  ++i;
+
+  for ( ; i < n; ++i)
+    buses_[i - 1] = buses_[i];
+
+  buses_.pop_back();
 }
 
 CQPlacementGroup *
@@ -5191,9 +8765,48 @@ addPlacementGroup(CQPlacementGroup *placementGroup, int r, int c, int nr, int nc
 {
   placementGroups_.push_back(PlacementGroupData(placementGroup, r, c, nr, nc, alignment));
 
-  placementGroup->parentPlacementGroup = this;
+  placementGroup->parentPlacementGroup_ = this;
 
   rectValid_ = false;
+}
+
+void
+CQPlacementGroup::
+replacePlacementGroup(CQSchem *schem, CQPlacementGroup *placementGroup)
+{
+  // find position
+  int i = 0;
+  int n = placementGroups_.size();
+
+  for ( ; i < n - 1; ++i) {
+    if (placementGroups_[i].placementGroup == placementGroup)
+      break;
+  }
+
+  assert(i < n - 1);
+
+  //---
+
+  // delete old placement
+  CQPlacementGroup *oldGroup = placementGroups_[i++].placementGroup;
+
+  for (auto &gateData : oldGroup->gates_)
+    schem->removeGate(gateData.gate);
+
+  for (auto &connection : oldGroup->connections_)
+    schem->removeConnection(connection);
+
+  for (auto &bus : oldGroup->buses_)
+    schem->removeBus(bus);
+
+  delete oldGroup;
+
+  //---
+
+  for ( ; i < n; ++i)
+    placementGroups_[i - 1] = placementGroups_[i];
+
+  placementGroups_.pop_back();
 }
 
 void
@@ -5231,9 +8844,9 @@ CQPlacementGroup::
 penColor(CQSchemRenderer *renderer) const
 {
   if (renderer->schem->insidePlacement() == this)
-    return Qt::cyan;
+    return renderer->insideColor;
 
-  return (isSelected() ? Qt::yellow : QColor(150,150,250));
+  return (isSelected() ? renderer->selectColor : QColor(150,150,250));
 }
 
 QSizeF
@@ -5579,6 +9192,7 @@ draw(CQSchemRenderer *renderer) const
   const_cast<CQPlacementGroup *>(this)->updateRect();
 
   renderer->painter->setPen(penColor(renderer));
+  renderer->painter->setBrush(Qt::NoBrush);
 
   prect_ = renderer->windowToPixel(rect());
 
