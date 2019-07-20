@@ -430,6 +430,7 @@ class Schematic : public QFrame {
   //---
 
   bool execGate(const QString &name);
+  bool execGate(PlacementGroup *parentGroup, const QString &name);
 
   void addNandGate       ();
   void addNotGate        ();
@@ -928,6 +929,8 @@ class Connection {
 
   bool isLeft() const;
   bool isTop () const;
+
+  void merge(Connection *connection);
 
   void removePort(Port *port);
 

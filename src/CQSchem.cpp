@@ -475,6 +475,19 @@ bool
 Schematic::
 execGate(const QString &name)
 {
+  return execGate(placementGroup_, name);
+}
+
+bool
+Schematic::
+execGate(PlacementGroup *parentGroup, const QString &name)
+{
+  PlacementGroup *oldPlacementGroup = placementGroup_;
+
+  placementGroup_ = parentGroup;
+
+  bool rc = true;
+
   if      (name == "nand"       ) addNandGate();
   else if (name == "not"        ) addNotGate();
   else if (name == "and"        ) addAndGate();
@@ -565,9 +578,11 @@ execGate(const QString &name)
 
   else if (name == "test_connection") testConnection();
 
-  else return false;
+  else rc = false;
 
-  return true;
+  placementGroup_ = oldPlacementGroup;
+
+  return rc;
 }
 
 void
@@ -2144,7 +2159,7 @@ buildNotGate()
   PlacementGroup *placementGroup =
     addPlacementGroup(PlacementGroup::Placement::HORIZONTAL);
 
-  placementGroup->setCollapseName("and");
+  placementGroup->setCollapseName("not");
 
   //---
 
@@ -2158,7 +2173,9 @@ buildNotGate()
 
   //---
 
-  NandGate *gate = addPlacementGateT<NandGate>(placementGroup, "nand", "");
+  NandGate *gate = addGateT<NandGate>("nand");
+
+  placementGroup->addGate(gate);
 
   Connection *in  = addPlacementConn("a");
   Connection *out = addPlacementConn("c");
@@ -3674,11 +3691,11 @@ buildComparator8()
 
   PlacementGroup *placementGroup1[8];
 
+  for (int i = 0; i < 8; ++i)
+    placementGroup1[7 - 1] =
+      placementGroup->addPlacementGroup(PlacementGroup::Placement::GRID, 4, 5);
+
   for (int i = 0; i < 8; ++i) {
-    placementGroup1[i] = new PlacementGroup(PlacementGroup::Placement::GRID, 4, 5);
-
-    //---
-
     XorGate  *xorGate1 = addGateT<XorGate >(QString("xor1[%1]").arg(i));
     NotGate  *notGate2 = addGateT<NotGate >(QString("not2[%1]").arg(i));
     AndGate  *andGate3 = addGateT<AndGate >(QString("and3[%1]").arg(i));
@@ -3736,9 +3753,6 @@ buildComparator8()
     iallEqualCon = oallEqualCon;
     iaLargerCon  = oaLargerCon;
   }
-
-  for (int i = 0; i < 8; ++i)
-    placementGroup->addPlacementGroup(placementGroup1[7 - i]);
 }
 
 void
@@ -3987,12 +4001,12 @@ buildRam256()
   //---
 
   PlacementGroup *placementGroup1 =
-    new PlacementGroup(PlacementGroup::Placement::GRID, 16, 16);
+    placementGroup->addPlacementGroup(PlacementGroup::Placement::GRID, 16, 16, 0, 2);
 
   for (int r = 0; r < 16; ++r) {
     for (int c = 0; c < 16; ++c) {
       PlacementGroup *placementGroup2 =
-        new PlacementGroup(PlacementGroup::Placement::GRID, 2, 3);
+        placementGroup1->addPlacementGroup(PlacementGroup::Placement::GRID, 2, 3, 15 - r, c);
 
       //---
 
@@ -4038,14 +4052,8 @@ buildRam256()
       placementGroup2->addGate(agate, 1, 1);
       placementGroup2->addGate(bgate, 0, 1);
       placementGroup2->addGate(rgate, 0, 2, 2, 1);
-
-      //---
-
-      placementGroup1->addPlacementGroup(placementGroup2, 15 - r, c);
     }
   }
-
-  placementGroup->addPlacementGroup(placementGroup1, 0, 2);
 }
 
 void
@@ -4160,14 +4168,14 @@ buildRam65536()
   //---
 
   PlacementGroup *placementGroup1 =
-    new PlacementGroup(PlacementGroup::Placement::GRID, 256, 256);
+    placementGroup->addPlacementGroup(PlacementGroup::Placement::GRID, 256, 256, 0, 2);
 
   for (int r = 0; r < 256; ++r) {
     //std::cerr << "Row: " << r << "\n";
 
     for (int c = 0; c < 256; ++c) {
       PlacementGroup *placementGroup2 =
-        new PlacementGroup(PlacementGroup::Placement::GRID, 2, 3);
+        placementGroup1->addPlacementGroup(PlacementGroup::Placement::GRID, 2, 3, 255 - r, c);
 
       //---
 
@@ -4213,14 +4221,8 @@ buildRam65536()
       placementGroup2->addGate(agate, 0, 1);
       placementGroup2->addGate(bgate, 1, 1);
       placementGroup2->addGate(rgate, 1, 2, 2, 1);
-
-      //---
-
-      placementGroup1->addPlacementGroup(placementGroup2, 255 - r, c);
     }
   }
-
-  placementGroup->addPlacementGroup(placementGroup1, 0, 2);
 }
 
 void
@@ -4294,12 +4296,10 @@ buildAlu()
 
   for (int i = 0; i < 3; ++i) {
     PlacementGroup *placementGroup1 =
-      new PlacementGroup(PlacementGroup::Placement::VERTICAL);
+      placementGroup->addPlacementGroup(PlacementGroup::Placement::VERTICAL, 1, 1, i + 1, 2);
 
     placementGroup1->addGate(enablerGate[i]);
     placementGroup1->addGate(andGate    [i]);
-
-    placementGroup->addPlacementGroup(placementGroup1, i + 1, 2);
   }
 
   for (int i = 0; i < 4; ++i)
@@ -5936,7 +5936,7 @@ expandSlot()
   for (auto &placementGroup : expandGroups) {
     PlacementGroup *parentGroup = placementGroup->parent();
 
-    bool rc = execGate(placementGroup->expandName());
+    bool rc = execGate(parentGroup, placementGroup->expandName());
     assert(rc);
 
     PlacementGroup *newPlacementGroup =
@@ -5969,7 +5969,7 @@ collapseSlot()
 
   if (! selPlacementGroups.empty()) {
     for (auto &placementGroup : selPlacementGroups) {
-      if (placementGroup->expandName() != "")
+      if (placementGroup->collapseName() != "")
         collapseGroups.push_back(placementGroup);
     }
   }
@@ -5982,7 +5982,7 @@ collapseSlot()
       for (auto &gate : selGates) {
         PlacementGroup *placementGroup = gate->placementGroup();
 
-        if (placementGroup->expandName() != "")
+        if (placementGroup->collapseName() != "")
           collapseGroups.push_back(placementGroup);
       }
     }
@@ -6003,7 +6003,7 @@ collapseSlot()
   for (auto &placementGroup : collapseGroups) {
     PlacementGroup *parentGroup = placementGroup->parent();
 
-    bool rc = execGate(placementGroup->collapseName());
+    bool rc = execGate(parentGroup, placementGroup->collapseName());
     assert(rc);
 
     PlacementGroup *newPlacementGroup =
@@ -9402,6 +9402,20 @@ isTop() const
 
 void
 Connection::
+merge(Connection *connection)
+{
+  for (auto &port : connection->inPorts_)
+    addInPort(port);
+
+  for (auto &port : connection->outPorts_)
+    addOutPort(port);
+
+  connection->inPorts_ .clear();
+  connection->outPorts_.clear();
+}
+
+void
+Connection::
 removePort(Port *port)
 {
   int i = 0;
@@ -11441,17 +11455,67 @@ replacePlacementGroup(Schematic *schem, PlacementGroup *placementGroup)
   oldGroup->hierConnections(oldConnections);
   oldGroup->hierBuses      (oldBuses);
 
-  for (auto &gate : oldGates) {
-    for (auto &port : gate->inputs())
-      port->connection()->removePort(port);
+  //--
 
-    for (auto &port : gate->outputs())
-      port->connection()->removePort(port);
+  using Names = std::vector<QString>;
+
+  struct ConnectionPorts {
+    Names names;
+    bool  valid { true };
+  };
+
+  using PortConnections = std::map<Connection *,ConnectionPorts>;
+
+  PortConnections portConnections;
+
+  for (auto &gate : oldGates) {
+    for (auto &port : gate->inputs()) {
+      Connection *connection = port->connection();
+
+      if (connection) {
+        ConnectionPorts &connectionPorts = portConnections[connection];
+
+        connectionPorts.names.push_back(port->name());
+
+        connection->removePort(port);
+      }
+    }
+
+    for (auto &port : gate->outputs()) {
+      Connection *connection = port->connection();
+
+      if (connection) {
+        ConnectionPorts &connectionPorts = portConnections[connection];
+
+        connectionPorts.names.push_back(port->name());
+
+        connection->removePort(port);
+      }
+    }
 
     schem->removeGate(gate);
   }
 
+  //--
+
+  for (auto &portConnection : portConnections) {
+    if (! portConnection.second.valid) continue;
+
+    Connection *connection = portConnection.first;
+
+    if (! connection->anyPorts()) {
+      schem->removeConnection(connection);
+
+      portConnection.second.valid = false;
+    }
+  }
+
+  //--
+
   for (auto &connection : oldConnections) {
+    auto p = portConnections.find(connection);
+    if (p != portConnections.end()) continue;
+
     if (! connection->anyPorts())
       schem->removeConnection(connection);
   }
@@ -11468,7 +11532,40 @@ replacePlacementGroup(Schematic *schem, PlacementGroup *placementGroup)
 
   placementGroups_.pop_back();
 
-  return placementGroups_.back().placementGroup;
+  PlacementGroup *newPlacementGroup = placementGroups_.back().placementGroup;
+
+  //---
+
+  Connections newConnections;
+
+  newPlacementGroup->hierConnections(newConnections);
+
+  for (auto &portConnection : portConnections) {
+    if (! portConnection.second.valid) continue;
+
+    Connection *connection = portConnection.first;
+
+    for (auto &newConnection : newConnections) {
+      for (const auto &name : portConnection.second.names) {
+        if (newConnection->name() == name) {
+          newConnection->merge(connection);
+
+          schem->removeConnection(connection);
+
+          portConnection.second.valid = false;
+
+          break;
+        }
+
+        if (! portConnection.second.valid)
+          break;
+      }
+    }
+  }
+
+  //---
+
+  return newPlacementGroup;
 }
 
 void
