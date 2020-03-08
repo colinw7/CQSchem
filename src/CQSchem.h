@@ -578,7 +578,7 @@ class Schematic : public QFrame {
 
   void addTValue(const Connection *connection, bool b);
 
-  void resizeEvent(QResizeEvent *);
+  void resizeEvent(QResizeEvent *) override;
 
   void paintEvent(QPaintEvent *) override;
 
@@ -675,7 +675,7 @@ class Waveform : public QFrame {
   QSize sizeHint() const override;
 
  private:
-  void paintEvent(QPaintEvent *);
+  void paintEvent(QPaintEvent *) override;
 
  private:
   using Values    = std::map<int,bool>;

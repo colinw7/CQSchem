@@ -8209,7 +8209,7 @@ exec()
 
   for (int i = 0; i < 8; ++i) {
     if (c[i] != outputs_[i]->getValue()) {
-      outputs_[i]->setValue(c);
+      outputs_[i]->setValue(c[i]);
 
       changed = true;
     }
