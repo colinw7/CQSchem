@@ -148,7 +148,7 @@ Window(bool waveform)
 
   auto addToolButton = [&](const QString &name, const QString &iconName,
                            const QString &tip, const char *slotName) {
-    QToolButton *button = new QToolButton;
+    auto *button = new QToolButton;
 
     button->setObjectName(name);
     button->setIcon(CQPixmapCacheInst->getIcon(iconName));
@@ -161,40 +161,40 @@ Window(bool waveform)
     return button;
   };
 
-  QToolButton *connectionTextButton =
+  auto *connectionTextButton =
     addCheckButton("connectionText", "CONNECTION_TEXT", schem_->isShowConnectionText(),
                   "Connection Text", SLOT(connectionTextSlot(bool)));
-  QToolButton *gateTextButton =
+  auto *gateTextButton =
     addCheckButton("gateText"      , "GATE_TEXT"      , schem_->isShowGateText(),
                   "Gate Text", SLOT(gateTextSlot(bool)));
-  QToolButton *portTextButton =
+  auto *portTextButton =
     addCheckButton("portText"      , "PORT_TEXT"      , schem_->isShowPortText(),
                   "Port Text", SLOT(portTextSlot(bool)));
 
-  QToolButton *moveGateButton =
+  auto *moveGateButton =
     addCheckButton("moveGate"      , "MOVE_GATE"      , schem_->isMoveGate(),
                   "Move Gate", SLOT(moveGateSlot(bool)));
-  QToolButton *movePlacementButton =
+  auto *movePlacementButton =
     addCheckButton("movePlacement" , "MOVE_PLACEMENT" , schem_->isMovePlacement(),
                   "Move Placement", SLOT(movePlacementSlot(bool)));
-  QToolButton *moveConnectionButton =
+  auto *moveConnectionButton =
     addCheckButton("moveConnection", "MOVE_CONNECTION", schem_->isMoveConnection(),
                   "Move Connection", SLOT(moveConnectionSlot(bool)));
 
-  QToolButton *connectionVisibleButton =
+  auto *connectionVisibleButton =
     addCheckButton("connectionVisible", "CONNECTION_VISIBLE",
                   schem_->isConnectionVisible(), "Connection Visible",
                   SLOT(connectionVisibleSlot(bool)));
-  QToolButton *gateVisibleButton =
+  auto *gateVisibleButton =
     addCheckButton("gateVisible", "GATE_VISIBLE",
                   schem_->isGateVisible(), "Gate Visible",
                   SLOT(gateVisibleSlot(bool)));
-  QToolButton *placementGroupVisibleButton =
+  auto *placementGroupVisibleButton =
     addCheckButton("placementGroupVisible", "PLACEMENT_GROUP_VISIBLE",
                   schem_->isPlacementGroupVisible(), "Placement Group Visible",
                   SLOT(placementGroupVisibleSlot(bool)));
 
-  QToolButton *collapseBusButton =
+  auto *collapseBusButton =
     addCheckButton("collapseBus", "COLLAPSE_BUS",
                   schem_->isCollapseBus(), "Collapse Bus",
                   SLOT(collapseBusSlot(bool)));
