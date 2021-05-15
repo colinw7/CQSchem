@@ -1,4 +1,5 @@
 #include <CQSchem.h>
+#include <CQIconButton.h>
 
 #include <QApplication>
 #include <QSplitter>
@@ -63,9 +64,9 @@ main(int argc, char **argv)
     }
   }
 
-  CQSchem::Window *window = new CQSchem::Window(waveform);
+  auto *window = new CQSchem::Window(waveform);
 
-  CQSchem::Schematic *schem = window->schem();
+  auto *schem = window->schem();
 
   for (const auto &gate : gates) {
     if (schem->execGate(gate.c_str()))
@@ -131,10 +132,10 @@ Window(bool waveform)
 
   auto addCheckButton = [&](const QString &name, const QString &iconName, bool checked,
                             const QString &tip, const char *slotName) {
-    QToolButton *button = new QToolButton;
+    auto *button = new CQIconButton;
 
     button->setObjectName(name);
-    button->setIcon(CQPixmapCacheInst->getIcon(iconName));
+    button->setIcon(iconName);
     button->setIconSize(QSize(32, 32));
     button->setAutoRaise(true);
     button->setCheckable(true);
@@ -148,10 +149,10 @@ Window(bool waveform)
 
   auto addToolButton = [&](const QString &name, const QString &iconName,
                            const QString &tip, const char *slotName) {
-    auto *button = new QToolButton;
+    auto *button = new CQIconButton;
 
     button->setObjectName(name);
-    button->setIcon(CQPixmapCacheInst->getIcon(iconName));
+    button->setIcon(iconName);
     button->setIconSize(QSize(32, 32));
     button->setAutoRaise(true);
     button->setToolTip(tip);
@@ -163,41 +164,41 @@ Window(bool waveform)
 
   auto *connectionTextButton =
     addCheckButton("connectionText", "CONNECTION_TEXT", schem_->isShowConnectionText(),
-                  "Connection Text", SLOT(connectionTextSlot(bool)));
+                   "Connection Text", SLOT(connectionTextSlot(bool)));
   auto *gateTextButton =
     addCheckButton("gateText"      , "GATE_TEXT"      , schem_->isShowGateText(),
-                  "Gate Text", SLOT(gateTextSlot(bool)));
+                   "Gate Text", SLOT(gateTextSlot(bool)));
   auto *portTextButton =
     addCheckButton("portText"      , "PORT_TEXT"      , schem_->isShowPortText(),
-                  "Port Text", SLOT(portTextSlot(bool)));
+                   "Port Text", SLOT(portTextSlot(bool)));
 
   auto *moveGateButton =
     addCheckButton("moveGate"      , "MOVE_GATE"      , schem_->isMoveGate(),
-                  "Move Gate", SLOT(moveGateSlot(bool)));
+                   "Move Gate", SLOT(moveGateSlot(bool)));
   auto *movePlacementButton =
     addCheckButton("movePlacement" , "MOVE_PLACEMENT" , schem_->isMovePlacement(),
-                  "Move Placement", SLOT(movePlacementSlot(bool)));
+                   "Move Placement", SLOT(movePlacementSlot(bool)));
   auto *moveConnectionButton =
     addCheckButton("moveConnection", "MOVE_CONNECTION", schem_->isMoveConnection(),
-                  "Move Connection", SLOT(moveConnectionSlot(bool)));
+                   "Move Connection", SLOT(moveConnectionSlot(bool)));
 
   auto *connectionVisibleButton =
     addCheckButton("connectionVisible", "CONNECTION_VISIBLE",
-                  schem_->isConnectionVisible(), "Connection Visible",
-                  SLOT(connectionVisibleSlot(bool)));
+                   schem_->isConnectionVisible(), "Connection Visible",
+                   SLOT(connectionVisibleSlot(bool)));
   auto *gateVisibleButton =
     addCheckButton("gateVisible", "GATE_VISIBLE",
-                  schem_->isGateVisible(), "Gate Visible",
-                  SLOT(gateVisibleSlot(bool)));
+                   schem_->isGateVisible(), "Gate Visible",
+                   SLOT(gateVisibleSlot(bool)));
   auto *placementGroupVisibleButton =
     addCheckButton("placementGroupVisible", "PLACEMENT_GROUP_VISIBLE",
-                  schem_->isPlacementGroupVisible(), "Placement Group Visible",
-                  SLOT(placementGroupVisibleSlot(bool)));
+                   schem_->isPlacementGroupVisible(), "Placement Group Visible",
+                   SLOT(placementGroupVisibleSlot(bool)));
 
   auto *collapseBusButton =
     addCheckButton("collapseBus", "COLLAPSE_BUS",
-                  schem_->isCollapseBus(), "Collapse Bus",
-                  SLOT(collapseBusSlot(bool)));
+                   schem_->isCollapseBus(), "Collapse Bus",
+                   SLOT(collapseBusSlot(bool)));
 
   playButton_  = addToolButton("play" , "PLAY"    , "Play" , SLOT(playSlot()));
   pauseButton_ = addToolButton("pause", "PAUSE"   , "Pause", SLOT(pauseSlot()));
@@ -3692,7 +3693,7 @@ buildComparator8()
   PlacementGroup *placementGroup1[8];
 
   for (int i = 0; i < 8; ++i)
-    placementGroup1[7 - 1] =
+    placementGroup1[7 - i] =
       placementGroup->addPlacementGroup(PlacementGroup::Placement::GRID, 4, 5);
 
   for (int i = 0; i < 8; ++i) {
