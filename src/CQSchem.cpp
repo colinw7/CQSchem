@@ -5294,8 +5294,8 @@ void
 Schematic::
 removeConnection(Connection *connection)
 {
-  int i = 0;
-  int n = connections_.size();
+  uint i = 0;
+  auto n = connections_.size();
 
   for ( ; i < n; ++i) {
     if (connections_[i] == connection)
@@ -5325,8 +5325,8 @@ void
 Schematic::
 removeGate(Gate *gate)
 {
-  int i = 0;
-  int n = gates_.size();
+  uint i = 0;
+  auto n = gates_.size();
 
   for ( ; i < n; ++i) {
     if (gates_[i] == gate)
@@ -5358,8 +5358,8 @@ void
 Schematic::
 removeBus(Bus *bus)
 {
-  int i = 0;
-  int n = buses_.size();
+  uint i = 0;
+  auto n = buses_.size();
 
   for ( ; i < n; ++i) {
     if (buses_[i] == bus)
@@ -5425,36 +5425,36 @@ test()
       out.push_back(connection);
   }
 
-  int ni = in .size();
-  int no = out.size();
+  auto ni = in .size();
+  auto no = out.size();
 
-  int n = std::pow(2, ni);
+  uint n = uint(std::pow(2, ni));
 
-  for (int j = 0; j < ni; ++j)
-    std::cerr << in[ni - j - 1]->name().toStdString();
+  for (uint j = 0; j < ni; ++j)
+    std::cerr << in[uint(ni - j - 1)]->name().toStdString();
 
   std::cerr << " = ";
 
-  for (int j = 0; j < no; ++j)
-    std::cerr << out[no - j - 1]->name().toStdString();
+  for (uint j = 0; j < no; ++j)
+    std::cerr << out[uint(no - j - 1)]->name().toStdString();
 
   std::cerr << "\n";
 
-  for (int i = 0; i < n; ++i) {
-    for (int j = 0; j < ni; ++j)
-      in[j]->setValue(i & (1 << j));
+  for (uint i = 0; i < n; ++i) {
+    for (uint j = 0; j < ni; ++j)
+      in[uint(j)]->setValue(i & (1 << j));
 
     exec();
 
     //---
 
-    for (int j = 0; j < ni; ++j)
-      std::cerr << (in[ni - j - 1]->getValue() ? "1" : "0");
+    for (uint j = 0; j < ni; ++j)
+      std::cerr << (in[uint(ni - j - 1)]->getValue() ? "1" : "0");
 
     std::cerr << " = ";
 
-    for (int j = 0; j < no; ++j)
-      std::cerr << (out[no - j - 1]->getValue() ? "1" : "0");
+    for (uint j = 0; j < no; ++j)
+      std::cerr << (out[uint(no - j - 1)]->getValue() ? "1" : "0");
 
     std::cerr << "\n";
   }
@@ -6718,8 +6718,8 @@ Gate::
 placePorts(double pix1, double piy1, double pix2, double piy2,
            double pox1, double poy1, double pox2, double poy2, int ni, int no) const
 {
-  if (ni < 0) ni = inputs_ .size();
-  if (no < 0) no = outputs_.size();
+  if (ni < 0) ni = int(inputs_ .size());
+  if (no < 0) no = int(outputs_.size());
 
   assert(ni <= int(inputs_ .size()));
   assert(no <= int(outputs_.size()));
@@ -6740,13 +6740,13 @@ placePorts(double pix1, double piy1, double pix2, double piy2,
     Side oside = (orientation() == Orientation::R0 ? Side::RIGHT : Side::LEFT );
 
     for (int i = 0; i < ni; ++i) {
-      inputs_[i]->setPixelPos(QPointF(xi, pyi[i]));
-      inputs_[i]->setSide(iside);
+      inputs_[uint(i)]->setPixelPos(QPointF(xi, pyi[uint(i)]));
+      inputs_[uint(i)]->setSide(iside);
     }
 
     for (int i = 0; i < no; ++i) {
-      outputs_[i]->setPixelPos(QPointF(xo, pyo[i]));
-      outputs_[i]->setSide(oside);
+      outputs_[uint(i)]->setPixelPos(QPointF(xo, pyo[uint(i)]));
+      outputs_[uint(i)]->setSide(oside);
     }
   }
   else {
@@ -6765,13 +6765,13 @@ placePorts(double pix1, double piy1, double pix2, double piy2,
     Side oside = (orientation() == Orientation::R90 ? Side::BOTTOM : Side::TOP   );
 
     for (int i = 0; i < ni; ++i) {
-      inputs_[i]->setPixelPos(QPointF(pxi[i], yi));
-      inputs_[i]->setSide(iside);
+      inputs_[uint(i)]->setPixelPos(QPointF(pxi[uint(i)], yi));
+      inputs_[uint(i)]->setSide(iside);
     }
 
     for (int i = 0; i < no; ++i) {
-      outputs_[i]->setPixelPos(QPointF(pxo[i], yo));
-      outputs_[i]->setSide(oside);
+      outputs_[uint(i)]->setPixelPos(QPointF(pxo[uint(i)], yo));
+      outputs_[uint(i)]->setSide(oside);
     }
   }
 }
@@ -6819,7 +6819,7 @@ placePortsOnSide(Port **ports, int n, const Side &side) const
     side1 = Port::prevSide(side);
 
   for (int i = 0; i < n; ++i)
-    ports[i]->setSide(side1);
+    ports[uint(i)]->setSide(side1);
 
   if (side1 == Side::LEFT || side1 == Side::RIGHT) {
     bool flip = (side1 == Side::RIGHT);
@@ -6831,9 +6831,9 @@ placePortsOnSide(Port **ports, int n, const Side &side) const
 
     for (int i = 0; i < n; ++i) {
       if (side1 == Side::LEFT)
-        ports[i]->setPixelPos(QPointF(px1(), y[i]));
+        ports[uint(i)]->setPixelPos(QPointF(px1(), y[uint(i)]));
       else
-        ports[i]->setPixelPos(QPointF(px2(), y[i]));
+        ports[uint(i)]->setPixelPos(QPointF(px2(), y[uint(i)]));
     }
   }
   else {
@@ -6843,9 +6843,9 @@ placePortsOnSide(Port **ports, int n, const Side &side) const
 
     for (int i = 0; i < n; ++i) {
       if (side1 == Side::TOP)
-        ports[i]->setPixelPos(QPointF(x[i], py1()));
+        ports[uint(i)]->setPixelPos(QPointF(x[uint(i)], py1()));
       else
-        ports[i]->setPixelPos(QPointF(x[i], py2()));
+        ports[uint(i)]->setPixelPos(QPointF(x[uint(i)], py2()));
     }
   }
 }
@@ -7488,7 +7488,7 @@ exec()
 
   bool changed = false;
 
-  for (int i = 0; i < 8; ++i) {
+  for (uint i = 0; i < 8; ++i) {
     bool iv = inputs_[i]->getValue();
 
     if (iv != state_[i]) {
@@ -7559,7 +7559,7 @@ exec()
 
   bool changed = false;
 
-  for (int i = 0; i < 8; ++i) {
+  for (uint i = 0; i < 8; ++i) {
     bool iv = (e ? inputs_[i]->getValue() : false);
 
     if (iv != outputs_[i]->getValue()) {
@@ -7610,8 +7610,8 @@ RegisterGate(const QString &name) :
   h_ = 1.0;
 
   for (int i = 0; i < 8; ++i) {
-    QString iname = RegisterGate::iname(i);
-    QString oname = RegisterGate::oname(i);
+    auto iname = RegisterGate::iname(i);
+    auto oname = RegisterGate::oname(i);
 
     addInputPort (iname);
     addOutputPort(oname);
@@ -7629,7 +7629,7 @@ exec()
 
   bool changed = false;
 
-  for (int i = 0; i < 8; ++i) {
+  for (uint i = 0; i < 8; ++i) {
     if (s)
       state_[i] = inputs_[i]->getValue();
 
@@ -7702,8 +7702,8 @@ exec()
 
   bool changed = false;
 
-  for (int i = 0; i < 4; ++i) {
-    bool v = (ab == i);
+  for (uint i = 0; i < 4; ++i) {
+    bool v = (ab == int(i));
 
     if (v != outputs_[i]->getValue()) {
       outputs_[i]->setValue(v);
@@ -7752,7 +7752,7 @@ Decoder8Gate(const QString &name) :
   addInputPorts(QStringList() << "a" << "b" << "c");
 
   for (int i = 0; i < 8; ++i) {
-    QString oname = Decoder8Gate::oname(i);
+    auto oname = Decoder8Gate::oname(i);
 
     addOutputPort(oname);
   }
@@ -7770,8 +7770,8 @@ exec()
 
   bool changed = false;
 
-  for (int i = 0; i < 8; ++i) {
-    bool v = (abc == i);
+  for (uint i = 0; i < 8; ++i) {
+    bool v = (abc == int(i));
 
     if (v != outputs_[i]->getValue()) {
       outputs_[i]->setValue(v);
@@ -7837,8 +7837,8 @@ exec()
 
   bool changed = false;
 
-  for (int i = 0; i < 16; ++i) {
-    bool v = (abcd == i);
+  for (uint i = 0; i < 16; ++i) {
+    bool v = (abcd == int(i));
 
     if (v != outputs_[i]->getValue()) {
       outputs_[i]->setValue(v);
@@ -7908,8 +7908,8 @@ exec()
 
   bool changed = false;
 
-  for (int i = 0; i < 256; ++i) {
-    bool v = (abcdefgh == i);
+  for (uint i = 0; i < 256; ++i) {
+    bool v = (abcdefgh == int(i));
 
     if (v != outputs_[i]->getValue()) {
       outputs_[i]->setValue(v);
@@ -8042,7 +8042,7 @@ exec()
 
   bool changed = false;
 
-  for (int i = 0; i < 8; ++i) {
+  for (uint i = 0; i < 8; ++i) {
     bool a = inputs_[i + 0]->getValue();
     bool b = inputs_[i + 8]->getValue();
 
@@ -8193,7 +8193,7 @@ exec()
 
   int c[8];
 
-  for (int i = 0; i < 8; ++i) {
+  for (uint i = 0; i < 8; ++i) {
     bool a1 = inputs_[i + 0]->getValue();
     bool b1 = inputs_[i + 8]->getValue();
 
@@ -8208,7 +8208,7 @@ exec()
 
   bool changed = false;
 
-  for (int i = 0; i < 8; ++i) {
+  for (uint i = 0; i < 8; ++i) {
     if (c[i] != outputs_[i]->getValue()) {
       outputs_[i]->setValue(c[i]);
 
@@ -8273,7 +8273,7 @@ exec()
 {
   bool o = true;
 
-  for (int i = 0; i < 8; ++i) {
+  for (uint i = 0; i < 8; ++i) {
     if (inputs_[i]->getValue()) {
       o = false;
       break;
@@ -8340,17 +8340,17 @@ exec()
   bool o[8];
 
   if (bus1) {
-    for (int i = 0; i < 8; ++i)
+    for (uint i = 0; i < 8; ++i)
       o[i] = (i == 0);
   }
   else {
-    for (int i = 0; i < 8; ++i)
+    for (uint i = 0; i < 8; ++i)
       o[i] = inputs_[i]->getValue();
   }
 
   bool changed = false;
 
-  for (int i = 0; i < 8; ++i) {
+  for (uint i = 0; i < 8; ++i) {
     if (o[i] != outputs_[i]->getValue()) {
       outputs_[i]->setValue(o[i]);
 
@@ -8418,7 +8418,7 @@ exec()
 {
   bool a[8], b[8];
 
-  for (int i = 0; i < 8; ++i) {
+  for (uint i = 0; i < 8; ++i) {
     a[i] = inputs_[i + 0]->getValue();
     b[i] = inputs_[i + 8]->getValue();
   }
@@ -8427,7 +8427,7 @@ exec()
 
   int op = 0;
 
-  for (int i = 0; i < 3; ++i)
+  for (uint i = 0; i < 3; ++i)
     op |= (inputs_[17 + i]->getValue() << i);
 
   //---
@@ -8439,7 +8439,7 @@ exec()
   bool equal     = false;
 
   if      (op == 0) { // Add
-    for (int i = 0; i < 8; ++i) {
+    for (uint i = 0; i < 8; ++i) {
       int ab = int(a[i]) + int(b[i]) + int(carry_in);
 
       c[i]      = (ab & 1);
@@ -8449,7 +8449,7 @@ exec()
     }
   }
   else if (op == 1) { // Shift Right
-    for (int i = 0; i < 8; ++i) {
+    for (uint i = 0; i < 8; ++i) {
       if (i == 0)
         carry_out = a[i];
       else
@@ -8459,7 +8459,7 @@ exec()
     c[7] = carry_in;
   }
   else if (op == 2) { // Shift Left
-    for (int i = 0; i < 8; ++i) {
+    for (uint i = 0; i < 8; ++i) {
       if (i == 7)
         carry_out = a[i];
       else
@@ -8469,26 +8469,26 @@ exec()
     c[0] = carry_in;
   }
   else if (op == 3) { // Not
-    for (int i = 0; i < 8; ++i)
+    for (uint i = 0; i < 8; ++i)
       c[i] = ! a[i];
   }
   else if (op == 4) { // And
-    for (int i = 0; i < 8; ++i)
+    for (uint i = 0; i < 8; ++i)
       c[i] = a[i] & b[i];
   }
   else if (op == 5) { // Or
-    for (int i = 0; i < 8; ++i)
+    for (uint i = 0; i < 8; ++i)
       c[i] = a[i] | b[i];
   }
   else if (op == 6) { // Exclusive Or
-    for (int i = 0; i < 8; ++i)
+    for (uint i = 0; i < 8; ++i)
       c[i] = a[i] ^ b[i];
   }
   else if (op == 7) { // Compare
     int a1 = 0;
     int b1 = 0;
 
-    for (int i = 0; i < 8; ++i) {
+    for (uint i = 0; i < 8; ++i) {
       a1 |= (a[i] << i);
       b1 |= (b[i] << i);
 
@@ -8501,7 +8501,7 @@ exec()
 
   bool zero = true;
 
-  for (int i = 0; i < 8; ++i) {
+  for (uint i = 0; i < 8; ++i) {
     if (c[i] != 0) {
       zero = false;
       break;
@@ -8511,8 +8511,8 @@ exec()
   bool changed = false;
 
   auto setOutput = [&](int i, bool b) {
-    if (b != outputs_[i]->getValue()) {
-      outputs_[i]->setValue(b);
+    if (b != outputs_[uint(i)]->getValue()) {
+      outputs_[uint(i)]->setValue(b);
 
       changed = true;
     }
@@ -8588,12 +8588,12 @@ exec()
 
   bool so = inputs_[8]->getValue();
 
-  for (int i = 0; i < 7; ++i)
+  for (uint i = 0; i < 7; ++i)
     ov[i + 1] = inputs_[i + 1]->getValue();
 
   bool changed = false;
 
-  for (int i = 0; i < 8; ++i) {
+  for (uint i = 0; i < 8; ++i) {
     if (s)
       state_[i] = ov[i];
 
@@ -8710,14 +8710,14 @@ exec()
 
   bool so = inputs_[0]->getValue(); // bit 0
 
-  for (int i = 0; i < 7; ++i)
+  for (uint i = 0; i < 7; ++i)
     ov[i] = inputs_[i + 1]->getValue(); // bit 1-7
 
   ov[7] = inputs_[8]->getValue(); // shift_in
 
   bool changed = false;
 
-  for (int i = 0; i < 8; ++i) {
+  for (uint i = 0; i < 8; ++i) {
     if (s)
       state_[i + 1] = ov[i];
 
@@ -8823,12 +8823,12 @@ exec()
 {
   bool ov[8];
 
-  for (int i = 0; i < 8; ++i)
+  for (uint i = 0; i < 8; ++i)
     ov[i] = ! inputs_[i]->getValue();
 
   bool changed = false;
 
-  for (int i = 0; i < 8; ++i) {
+  for (uint i = 0; i < 8; ++i) {
     if (ov[i] != outputs_[i]->getValue()) {
       outputs_[i]->setValue(ov[i]);
 
@@ -8888,12 +8888,12 @@ exec()
 {
   bool ov[8];
 
-  for (int i = 0; i < 8; ++i)
+  for (uint i = 0; i < 8; ++i)
     ov[i] = inputs_[2*i + 0]->getValue() & inputs_[2*i + 1]->getValue();
 
   bool changed = false;
 
-  for (int i = 0; i < 8; ++i) {
+  for (uint i = 0; i < 8; ++i) {
     if (ov[i] != outputs_[i]->getValue()) {
       outputs_[i]->setValue(ov[i]);
 
@@ -8951,12 +8951,12 @@ exec()
 {
   bool ov[8];
 
-  for (int i = 0; i < 8; ++i)
+  for (uint i = 0; i < 8; ++i)
     ov[i] = inputs_[2*i + 0]->getValue() | inputs_[2*i + 1]->getValue();
 
   bool changed = false;
 
-  for (int i = 0; i < 8; ++i) {
+  for (uint i = 0; i < 8; ++i) {
     if (ov[i] != outputs_[i]->getValue()) {
       outputs_[i]->setValue(ov[i]);
 
@@ -9014,14 +9014,14 @@ exec()
 {
   bool ov[8];
 
-  for (int i = 0; i < 8; ++i)
+  for (uint i = 0; i < 8; ++i)
     ov[i] = inputs_[2*i + 0]->getValue() ^ inputs_[2*i + 1]->getValue();
 
   bool changed = false;
 
   auto setOutput = [&](int i, bool b) {
-    if (b != outputs_[i]->getValue()) {
-      outputs_[i]->setValue(b);
+    if (b != outputs_[uint(i)]->getValue()) {
+      outputs_[uint(i)]->setValue(b);
 
       changed = true;
     }
@@ -9234,8 +9234,8 @@ exec()
 
   bool changed = false;
 
-  for (int i = 0; i < 7; ++i) {
-    bool b1 = (state_ == i + 1);
+  for (uint i = 0; i < 7; ++i) {
+    bool b1 = (state_ == int(i + 1));
 
     if (outputs_[i]->getValue() != b1) {
       outputs_[i]->setValue(b1);
@@ -9419,8 +9419,8 @@ void
 Connection::
 removePort(Port *port)
 {
-  int i = 0;
-  int n = inPorts_.size();
+  uint i = 0;
+  auto n = inPorts_.size();
 
   for ( ; i < n; ++i)
     if (inPorts_[i] == port)
@@ -9479,8 +9479,8 @@ draw(Renderer *renderer) const
   if (! renderer->schem->isConnectionVisible())
     return;
 
-  int ni = inPorts_ .size();
-  int no = outPorts_.size();
+  auto ni = inPorts_ .size();
+  auto no = outPorts_.size();
 
   if (ni == 0 && no == 0)
     return;
@@ -9493,14 +9493,14 @@ draw(Renderer *renderer) const
     QPointF     p    = port->pixelPos();
     const Side &side = port->calcSide();
 
-    points.push_back(SidePoint(QPoint(p.x(), p.y()), side, Direction::OUT));
+    points.push_back(SidePoint(QPoint(int(p.x()), int(p.y())), side, Direction::OUT));
   }
 
   for (const auto &port : outPorts_) {
     QPointF     p    = port->pixelPos();
     const Side &side = port->calcSide();
 
-    points.push_back(SidePoint(QPoint(p.x(), p.y()), side, Direction::IN));
+    points.push_back(SidePoint(QPoint(int(p.x()), int(p.y())), side, Direction::IN));
   }
 
   lines_.clear();
@@ -9687,7 +9687,7 @@ calcSingleDirectionLines(Renderer *, const SidePoints &points, Lines &lines) con
 {
   static const int DS = 32;
 
-  int np = points.size();
+  auto np = points.size();
 
   // calc average port connection point
   double xo = 0.0;
@@ -9737,8 +9737,8 @@ calcSingleDirectionLines(Renderer *, const SidePoints &points, Lines &lines) con
     yo += p.y();
   }
 
-  xo /= np;
-  yo /= np;
+  xo /= double(np);
+  yo /= double(np);
 
   double xo1 = xo;
   double yo1 = yo;
@@ -9831,8 +9831,8 @@ calcLines(Renderer *renderer, const SidePoints &points, Lines &lines) const
       //int w = std::max(x2 - x1, ds);
       //int h = std::max(y2 - y1, ds);
 
-      int xm = (x1 + x2)/2.0;
-      int ym = (y1 + y2)/2.0;
+      int xm = int((x1 + x2)/2.0);
+      int ym = int((y1 + y2)/2.0);
 
       std::set<int> xv, yv;
 
@@ -10573,12 +10573,12 @@ addLine(Lines &lines, const QPointF &p1, const QPointF &p2) const
 
   assert(int(dx) <= 1 || int(dy) <= 1);
 
-  int ind = lines.size();
+  auto ind = lines.size();
 
   if (p1.x() > p2.x() || (p1.x() == p2.x() && p1.y() > p2.y()))
-    lines.push_back(Line(ind, p2, p1));
+    lines.push_back(Line(int(ind), p2, p1));
   else
-    lines.push_back(Line(ind, p1, p2));
+    lines.push_back(Line(int(ind), p1, p2));
 }
 
 void
@@ -10625,7 +10625,7 @@ QPointF
 Connection::
 imidPoint() const
 {
-  int ni = inPorts_ .size();
+  auto ni = inPorts_.size();
 
   if (ni == 0)
     return QPointF();
@@ -10638,8 +10638,8 @@ imidPoint() const
     y += port->pixelPos().y();
   }
 
-  x /= ni;
-  y /= ni;
+  x /= double(ni);
+  y /= double(ni);
 
   return QPointF(x, y);
 }
@@ -10648,7 +10648,7 @@ QPointF
 Connection::
 omidPoint() const
 {
-  int no = outPorts_.size();
+  auto no = outPorts_.size();
 
   if (no == 0)
     return QPointF();
@@ -10661,8 +10661,8 @@ omidPoint() const
     y += port->pixelPos().y();
   }
 
-  x /= no;
-  y /= no;
+  x /= double(no);
+  y /= double(no);
 
   return QPointF(x, y);
 }
@@ -10671,8 +10671,8 @@ QPointF
 Connection::
 midPoint() const
 {
-  int ni = inPorts_ .size();
-  int no = outPorts_.size();
+  auto ni = inPorts_ .size();
+  auto no = outPorts_.size();
 
   if (ni + no == 0)
     return QPointF();
@@ -10690,8 +10690,8 @@ midPoint() const
     y += port->pixelPos().y();
   }
 
-  x /= ni + no;
-  y /= ni + no;
+  x /= double(ni + no);
+  y /= double(ni + no);
 
   return QPointF(x, y);
 }
@@ -10715,7 +10715,7 @@ Bus::
 Bus(const QString &name, int n) :
  name_(name), n_(n)
 {
-  connections_.resize(n);
+  connections_.resize(uint(n));
 }
 
 void
@@ -10724,7 +10724,7 @@ addConnection(Connection *connection, int i)
 {
   assert(connection && i >= 0 && i < n_);
 
-  connections_[i] = connection;
+  connections_[uint(i)] = connection;
 
   connection->setBus(this);
 }
@@ -10734,7 +10734,7 @@ Bus::
 connectionIndex(Connection *connection)
 {
   for (int i = 0; i < n_; ++i)
-    if (connections_[i] == connection)
+    if (connections_[uint(i)] == connection)
       return i;
 
   assert(false);
@@ -10759,10 +10759,10 @@ draw(Renderer *renderer)
   bool output = true;
 
   for (int i = 0; i < n_; ++i) {
-    if (! connections_[i]->isInput())
+    if (! connections_[uint(i)]->isInput())
       input = false;
 
-    if (! connections_[i]->isOutput())
+    if (! connections_[uint(i)]->isOutput())
       output = false;
   }
 
@@ -10784,8 +10784,8 @@ draw(Renderer *renderer)
   int ni = 0, no = 0;
 
   for (int i = 0; i < n_; ++i) {
-    if (! connections_[i]->isOutput()) {
-      QPointF p = connections_[i]->omidPoint();
+    if (! connections_[uint(i)]->isOutput()) {
+      QPointF p = connections_[uint(i)]->omidPoint();
 
       xi1 = (i == 0 ? p.x() : std::min(xi1, p.x()));
       yi1 = (i == 0 ? p.y() : std::min(yi1, p.y()));
@@ -10804,8 +10804,8 @@ draw(Renderer *renderer)
       ++ni;
     }
 
-    if (! connections_[i]->isInput()) {
-      QPointF p = connections_[i]->imidPoint();
+    if (! connections_[uint(i)]->isInput()) {
+      QPointF p = connections_[uint(i)]->imidPoint();
 
       xo1 = (i == 0 ? p.x() : std::min(xo1, p.x()));
       yo1 = (i == 0 ? p.y() : std::min(yo1, p.y()));
@@ -11042,7 +11042,7 @@ draw(Renderer *renderer)
     int na = 0, nb = 0;
 
     for (int i = 0; i < n_; ++i) {
-      QPointF p2 = connections_[i]->midPoint();
+      QPointF p2 = connections_[uint(i)]->midPoint();
 
       if (lr) {
         if (p2.y() < yic) ++na;
@@ -11058,9 +11058,9 @@ draw(Renderer *renderer)
     int ia = 0, ib = 0;
 
     for (int i = 0; i < n_; ++i) {
-      renderer->painter->setPen(connections_[i]->penColor(renderer));
+      renderer->painter->setPen(connections_[uint(i)]->penColor(renderer));
 
-      QPointF p2 = connections_[i]->midPoint();
+      QPointF p2 = connections_[uint(i)]->midPoint();
 
       QPointF pm1, pm2;
 
@@ -11101,17 +11101,17 @@ draw(Renderer *renderer)
       Schematic::drawLine(renderer, pm1, pm2);
       Schematic::drawLine(renderer, pm2, p2 );
 
-      for (const auto &port : connections_[i]->outPorts())
+      for (const auto &port : connections_[uint(i)]->outPorts())
         Schematic::drawConnection(renderer, p2, port->pixelPos());
 
       if (renderer->schem->isShowConnectionText()) {
         renderer->painter->setPen(renderer->textColor);
 
-        Schematic::drawTextOnLine(renderer, pm2, p2, connections_[i]->name(),
+        Schematic::drawTextOnLine(renderer, pm2, p2, connections_[uint(i)]->name(),
                                   Schematic::TextLinePos::MIDDLE);
       }
 
-      connections_[i]->setPRect(QRectF(p1, p2));
+      connections_[uint(i)]->setPRect(QRectF(p1, p2));
 
       if (lr) {
         if (side == Side::LEFT)
@@ -11167,7 +11167,7 @@ draw(Renderer *renderer)
     int na = 0, nb = 0;
 
     for (int i = 0; i < n_; ++i) {
-      QPointF p2 = connections_[i]->midPoint();
+      QPointF p2 = connections_[uint(i)]->midPoint();
 
       if (lr) {
         if (p2.y() < yoc) ++na;
@@ -11183,9 +11183,9 @@ draw(Renderer *renderer)
     int ia = 0, ib = 0;
 
     for (int i = 0; i < n_; ++i) {
-      renderer->painter->setPen(connections_[i]->penColor(renderer));
+      renderer->painter->setPen(connections_[uint(i)]->penColor(renderer));
 
-      QPointF p2 = connections_[i]->midPoint();
+      QPointF p2 = connections_[uint(i)]->midPoint();
 
       QPointF pm1, pm2;
 
@@ -11226,17 +11226,17 @@ draw(Renderer *renderer)
       Schematic::drawLine(renderer, pm1, pm2);
       Schematic::drawLine(renderer, pm2, p2 );
 
-      for (const auto &port : connections_[i]->inPorts())
+      for (const auto &port : connections_[uint(i)]->inPorts())
         Schematic::drawConnection(renderer, p2, port->pixelPos());
 
       if (renderer->schem->isShowConnectionText()) {
         renderer->painter->setPen(renderer->textColor);
 
-        Schematic::drawTextOnLine(renderer, pm2, p2, connections_[i]->name(),
+        Schematic::drawTextOnLine(renderer, pm2, p2, connections_[uint(i)]->name(),
                                   Schematic::TextLinePos::MIDDLE);
       }
 
-      connections_[i]->setPRect(QRectF(p1, p2));
+      connections_[uint(i)]->setPRect(QRectF(p1, p2));
 
       if (lr) {
         if (side == Side::LEFT)
@@ -11254,7 +11254,7 @@ draw(Renderer *renderer)
   }
   else {
     for (int i = 0; i < n_; ++i)
-      connections_[i]->draw(renderer);
+      connections_[uint(i)]->draw(renderer);
   }
 }
 
@@ -11326,8 +11326,8 @@ void
 PlacementGroup::
 removeGate(Gate *gate)
 {
-  int i = 0;
-  int n = gates_.size();
+  uint i = 0;
+  auto n = gates_.size();
 
   for ( ; i < n; ++i) {
     if (gates_[i].gate == gate)
@@ -11357,8 +11357,8 @@ void
 PlacementGroup::
 removeConnection(Connection *connection)
 {
-  int i = 0;
-  int n = connections_.size();
+  uint i = 0;
+  auto n = connections_.size();
 
   for ( ; i < n; ++i) {
     if (connections_[i] == connection)
@@ -11386,8 +11386,8 @@ void
 PlacementGroup::
 removeBus(Bus *bus)
 {
-  int i = 0;
-  int n = buses_.size();
+  uint i = 0;
+  auto n = buses_.size();
 
   for ( ; i < n; ++i) {
     if (buses_[i] == bus)
@@ -11433,8 +11433,8 @@ PlacementGroup::
 replacePlacementGroup(Schematic *schem, PlacementGroup *placementGroup)
 {
   // find position
-  int i = 0;
-  int n = placementGroups_.size();
+  uint i = 0;
+  auto n = placementGroups_.size();
 
   for ( ; i < n - 1; ++i) {
     if (placementGroups_[i].placementGroup == placementGroup)
@@ -11671,13 +11671,13 @@ place()
 
   //---
 
-  int nc = placementGroups_.size() + gates_.size();
+  auto nc = placementGroups_.size() + gates_.size();
 
   if (nc_ < 0)
-    nc_ = std::max(int(sqrt(nc)), 1);
+    nc_ = std::max(int(sqrt(double(nc))), 1);
 
   if (nr_ < 0)
-    nr_ = std::max((nc + nc_ - 1)/nc_, 1);
+    nr_ = std::max((int(nc) + nc_ - 1)/nc_, 1);
 
   //----
 
@@ -11686,8 +11686,8 @@ place()
 
   std::vector<double> rowHeights, colWidths;
 
-  rowHeights.resize(nr_);
-  colWidths .resize(nc_);
+  rowHeights.resize(uint(nr_));
+  colWidths .resize(uint(nc_));
 
   for (auto &placementGroupData : placementGroups_) {
     PlacementGroup *placementGroup = placementGroupData.placementGroup;
@@ -11713,10 +11713,10 @@ place()
       int nc1 = placementGroupData.nc;
 
       for (int ic = 0; ic < nc1; ++ic)
-        colWidths[c1 + ic] = std::max(colWidths[c1 + ic], size.width()/nc1);
+        colWidths[uint(c1 + ic)] = std::max(colWidths[uint(c1 + ic)], size.width()/nc1);
 
       for (int ir = 0; ir < nr1; ++ir)
-        rowHeights[r1 + ir] = std::max(rowHeights[r1 + ir], size.height()/nr1);
+        rowHeights[uint(r1 + ir)] = std::max(rowHeights[uint(r1 + ir)], size.height()/nr1);
 
       if (placementGroupData.c < 0) {
         ++c;
@@ -11759,10 +11759,10 @@ place()
       int nc1 = gateData.nc;
 
       for (int ic = 0; ic < nc1; ++ic)
-        colWidths[c1 + ic] = std::max(colWidths[c1 + ic], size.width()/nc1);
+        colWidths[uint(c1 + ic)] = std::max(colWidths[uint(c1 + ic)], size.width()/nc1);
 
       for (int ir = 0; ir < nr1; ++ir)
-        rowHeights[r1 + ir] = std::max(rowHeights[r1 + ir], size.height()/nr1);
+        rowHeights[uint(r1 + ir)] = std::max(rowHeights[uint(r1 + ir)], size.height()/nr1);
 
       if (gateData.c < 0) {
         ++c;
@@ -11831,24 +11831,24 @@ place()
         y1 = margin_;
 
         for (int r = 0; r < placementGroupData.r; ++r)
-          y1 += rowHeights[r];
+          y1 += rowHeights[uint(r)];
       }
 
       if (placementGroupData.c >= 0) {
         x1 = margin_;
 
         for (int c = 0; c < placementGroupData.c; ++c)
-          x1 += colWidths[c];
+          x1 += colWidths[uint(c)];
       }
 
       double w1 = 0.0;
       double h1 = 0.0;
 
       for (int ic = 0; ic < nc1; ++ic)
-        w1 += colWidths[c1 + ic];
+        w1 += colWidths[uint(c1 + ic)];
 
       for (int ir = 0; ir < nr1; ++ir)
-        h1 += rowHeights[r1 + ir];
+        h1 += rowHeights[uint(r1 + ir)];
 
       double w2 = size.width ();
       double h2 = size.height();
@@ -11864,7 +11864,7 @@ place()
       rect = QRectF(x1 + (w1 - w2)/2.0, y1 + (h1 - h2)/2.0, w2, h2);
 
       if (placementGroupData.c < 0) {
-        x += colWidths[c];
+        x += colWidths[uint(c)];
 
         ++c;
 
@@ -11874,7 +11874,7 @@ place()
           c = 0;
 
           x = margin_;
-          y += rowHeights[r];
+          y += rowHeights[uint(r)];
         }
       }
     }
@@ -11918,24 +11918,24 @@ place()
         y1 = margin_;
 
         for (int r = 0; r < gateData.r; ++r)
-          y1 += rowHeights[r];
+          y1 += rowHeights[uint(r)];
       }
 
       if (gateData.c >= 0) {
         x1 = margin_;
 
         for (int c = 0; c < gateData.c; ++c)
-          x1 += colWidths[c];
+          x1 += colWidths[uint(c)];
       }
 
       double w1 = 0.0;
       double h1 = 0.0;
 
       for (int ic = 0; ic < nc1; ++ic)
-        w1 += colWidths[c1 + ic];
+        w1 += colWidths[uint(c1 + ic)];
 
       for (int ir = 0; ir < nr1; ++ir)
-        h1 += rowHeights[r1 + ir];
+        h1 += rowHeights[uint(r1 + ir)];
 
       double w2 = size.width ();
       double h2 = size.height();
@@ -11951,7 +11951,7 @@ place()
       rect = QRectF(x1 + (w1 - w2)/2.0, y1 + (h1 - h2)/2.0, w2, h2);
 
       if (gateData.c < 0) {
-        x += colWidths[c];
+        x += colWidths[uint(c)];
 
         ++c;
 
@@ -11961,7 +11961,7 @@ place()
           c = 0;
 
           x = margin_;
-          y += rowHeights[r];
+          y += rowHeights[uint(r)];
         }
       }
     }

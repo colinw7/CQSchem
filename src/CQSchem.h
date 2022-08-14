@@ -1169,7 +1169,7 @@ class Gate {
   std::vector<double> calcXGaps(double px1, double px2, int n, bool flip=false) const {
     assert(n > 0);
 
-    std::vector<double> x(n);
+    auto x = std::vector<double>(uint(n));
 
     double xgap = this->xgap(px1, px2, n);
 
@@ -1177,13 +1177,13 @@ class Gate {
       x[0] = px1 + 0.5*xgap;
 
       for (int i = 1; i < n; ++i)
-        x[i] = x[i - 1] + xgap;
+        x[uint(i)] = x[uint(i - 1)] + xgap;
     }
     else {
       x[0] = px2 - 0.5*xgap;
 
       for (int i = 1; i < n; ++i)
-        x[i] = x[i - 1] - xgap;
+        x[uint(i)] = x[uint(i - 1)] - xgap;
     }
 
     return x;
@@ -1203,7 +1203,7 @@ class Gate {
   std::vector<double> calcYGaps(double py1, double py2, int n, bool flip=false) const {
     assert(n > 0);
 
-    std::vector<double> y(n);
+    auto y = std::vector<double>(uint(n));
 
     double ygap = this->ygap(py1, py2, n);
 
@@ -1211,13 +1211,13 @@ class Gate {
       y[0] = py1 + 0.5*ygap;
 
       for (int i = 1; i < n; ++i)
-        y[i] = y[i - 1] + ygap;
+        y[uint(i)] = y[uint(i - 1)] + ygap;
     }
     else {
       y[0] = py2 - 0.5*ygap;
 
       for (int i = 1; i < n; ++i)
-        y[i] = y[i - 1] - ygap;
+        y[uint(i)] = y[uint(i - 1)] - ygap;
     }
 
     return y;
