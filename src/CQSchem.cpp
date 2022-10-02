@@ -7,6 +7,7 @@
 #include <QLabel>
 #include <QVBoxLayout>
 #include <QPainter>
+#include <QPainterPath>
 #include <QMouseEvent>
 #include <QMenu>
 #include <QAction>
@@ -5701,7 +5702,7 @@ mousePressEvent(QMouseEvent *e)
 
     pressed_ = true;
   }
-  else if (e->button() == Qt::MidButton) {
+  else if (e->button() == Qt::MiddleButton) {
     pressConnection_ = nearestConnection(pressPoint_);
 
     if (pressConnection_) {
@@ -6211,7 +6212,7 @@ drawTextAtPoint(Renderer *renderer, const QPointF &p, const QString &text,
 
   QFontMetricsF fm(renderer->painter->font());
 
-  double dx = fm.width(text);
+  double dx = fm.horizontalAdvance(text);
   double dy = (fm.ascent() - fm.descent())/2.0;
 
   QPointF pm;
@@ -6277,7 +6278,7 @@ paintEvent(QPaintEvent *)
   for (auto &ci : connInds_) {
     const QString &name = ci.first->name();
 
-    w = std::max(w, fm.width(name));
+    w = std::max(w, fm.horizontalAdvance(name));
   }
 
   //--
@@ -6948,7 +6949,7 @@ bool
 NandGate::
 exec()
 {
-  bool b = ! (inputs_[0]->getValue() & inputs_[1]->getValue());
+  bool b = ! (inputs_[0]->getValue() && inputs_[1]->getValue());
 
   if (b == outputs_[0]->getValue())
     return false;
@@ -7054,7 +7055,7 @@ bool
 AndGate::
 exec()
 {
-  bool b = inputs_[0]->getValue() & inputs_[1]->getValue();
+  bool b = inputs_[0]->getValue() && inputs_[1]->getValue();
 
   if (b == outputs_[0]->getValue())
     return false;
@@ -7104,7 +7105,7 @@ bool
 And3Gate::
 exec()
 {
-  bool b = inputs_[0]->getValue() & inputs_[1]->getValue() & inputs_[2]->getValue();
+  bool b = inputs_[0]->getValue() && inputs_[1]->getValue() && inputs_[2]->getValue();
 
   if (b == outputs_[0]->getValue())
     return false;
@@ -7154,8 +7155,8 @@ bool
 And4Gate::
 exec()
 {
-  bool b = inputs_[0]->getValue() & inputs_[1]->getValue() &
-           inputs_[2]->getValue() & inputs_[3]->getValue();
+  bool b = inputs_[0]->getValue() && inputs_[1]->getValue() &&
+           inputs_[2]->getValue() && inputs_[3]->getValue();
 
   if (b == outputs_[0]->getValue())
     return false;
@@ -7206,10 +7207,10 @@ bool
 And8Gate::
 exec()
 {
-  bool b = inputs_[0]->getValue() & inputs_[1]->getValue() &
-           inputs_[2]->getValue() & inputs_[3]->getValue() &
-           inputs_[4]->getValue() & inputs_[5]->getValue() &
-           inputs_[6]->getValue() & inputs_[7]->getValue();
+  bool b = inputs_[0]->getValue() && inputs_[1]->getValue() &&
+           inputs_[2]->getValue() && inputs_[3]->getValue() &&
+           inputs_[4]->getValue() && inputs_[5]->getValue() &&
+           inputs_[6]->getValue() && inputs_[7]->getValue();
 
   if (b == outputs_[0]->getValue())
     return false;
@@ -7259,7 +7260,7 @@ bool
 OrGate::
 exec()
 {
-  bool b = inputs_[0]->getValue() | inputs_[1]->getValue();
+  bool b = inputs_[0]->getValue() || inputs_[1]->getValue();
 
   if (b == outputs_[0]->getValue())
     return false;
@@ -7310,10 +7311,10 @@ bool
 Or8Gate::
 exec()
 {
-  bool b = inputs_[0]->getValue() | inputs_[1]->getValue() |
-           inputs_[2]->getValue() | inputs_[3]->getValue() |
-           inputs_[4]->getValue() | inputs_[5]->getValue() |
-           inputs_[6]->getValue() | inputs_[7]->getValue();
+  bool b = inputs_[0]->getValue() || inputs_[1]->getValue() ||
+           inputs_[2]->getValue() || inputs_[3]->getValue() ||
+           inputs_[4]->getValue() || inputs_[5]->getValue() ||
+           inputs_[6]->getValue() || inputs_[7]->getValue();
 
   if (b == outputs_[0]->getValue())
     return false;
@@ -8889,7 +8890,7 @@ exec()
   bool ov[8];
 
   for (uint i = 0; i < 8; ++i)
-    ov[i] = inputs_[2*i + 0]->getValue() & inputs_[2*i + 1]->getValue();
+    ov[i] = inputs_[2*i + 0]->getValue() && inputs_[2*i + 1]->getValue();
 
   bool changed = false;
 
@@ -8952,7 +8953,7 @@ exec()
   bool ov[8];
 
   for (uint i = 0; i < 8; ++i)
-    ov[i] = inputs_[2*i + 0]->getValue() | inputs_[2*i + 1]->getValue();
+    ov[i] = inputs_[2*i + 0]->getValue() || inputs_[2*i + 1]->getValue();
 
   bool changed = false;
 
@@ -9798,9 +9799,9 @@ calcLines(Renderer *renderer, const SidePoints &points, Lines &lines) const
 
   class GridData {
    public:
-    using IVals       = std::map<int,int>;
-    using XConnected  = std::map<int,GridNode>;
-    using XYConnected = std::map<int,XConnected>;
+    using IVals       = std::map<int, int>;
+    using XConnected  = std::map<int, GridNode>;
+    using XYConnected = std::map<int, XConnected>;
 
    public:
     GridData() { }
@@ -10085,7 +10086,7 @@ calcLines(Renderer *renderer, const SidePoints &points, Lines &lines) const
     }
 
     void draw(Renderer *renderer) const {
-      renderer->painter->setPen(QColor(64,64,128,200));
+      renderer->painter->setPen(QColor(64, 64, 128, 200));
 
       int x1 = this->x1();
       int x2 = this->x2();
@@ -10117,8 +10118,8 @@ calcLines(Renderer *renderer, const SidePoints &points, Lines &lines) const
     };
 
    private:
-    using PointSet      = std::set<QPoint,PointCmp>;
-    using PointPointSet = std::map<QPoint,PointSet,PointCmp>;
+    using PointSet      = std::set<QPoint, PointCmp>;
+    using PointPointSet = std::map<QPoint, PointSet, PointCmp>;
 
     IVals         xvals_;
     IVals         yvals_;
@@ -10250,7 +10251,7 @@ calcLines(Renderer *renderer, const SidePoints &points, Lines &lines) const
     bool   found { false };
   };
 
-  using ConMinData = std::map<int,MinData>;
+  using ConMinData = std::map<int, MinData>;
 
   ncon = 0;
 
@@ -11465,7 +11466,7 @@ replacePlacementGroup(Schematic *schem, PlacementGroup *placementGroup)
     bool  valid { true };
   };
 
-  using PortConnections = std::map<Connection *,ConnectionPorts>;
+  using PortConnections = std::map<Connection *, ConnectionPorts>;
 
   PortConnections portConnections;
 
@@ -11650,7 +11651,7 @@ penColor(Renderer *renderer) const
   if (renderer->schem->insidePlacement() == this)
     return renderer->insideColor;
 
-  return (isSelected() ? renderer->selectColor : QColor(150,150,250));
+  return (isSelected() ? renderer->selectColor : QColor(150, 150, 250));
 }
 
 QSizeF

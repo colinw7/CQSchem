@@ -369,7 +369,6 @@ class Schematic : public QFrame {
   using Connections     = std::vector<Connection *>;
   using Buses           = std::vector<Bus *>;
 
-
  public:
   Schematic(Window *window);
  ~Schematic();
@@ -678,10 +677,10 @@ class Waveform : public QFrame {
   void paintEvent(QPaintEvent *) override;
 
  private:
-  using Values    = std::map<int,bool>;
-  using ConnInds  = std::map<const Connection *,int>;
-  using IndConns  = std::map<int,const Connection *>;
-  using IndValues = std::map<int,Values>;
+  using Values    = std::map<int, bool>;
+  using ConnInds  = std::map<const Connection *, int>;
+  using IndConns  = std::map<int, const Connection *>;
+  using IndValues = std::map<int, Values>;
 
   Schematic* schem_ { nullptr };
   ConnInds   connInds_;
@@ -880,10 +879,10 @@ class Connection {
    private:
     using ILines   = std::vector<ILine>;
     using IValues  = std::set<int>;
-    using IPair    = std::pair<int,int>;
+    using IPair    = std::pair<int, int>;
     using IPairs   = std::vector<IPair>;
-    using IValues1 = std::map<int,IValues>;
-    using IValues2 = std::map<int,IValues1>;
+    using IValues1 = std::map<int, IValues>;
+    using IValues2 = std::map<int, IValues1>;
 
     IValues2      xlines_;
     IValues2      ylines_;
